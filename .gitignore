@@ -1,0 +1,69 @@
+# Это комплект документации. Не коммитить локальные секреты или результаты стендовых тестов.
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.kbx
+*.age
+*.sqlite
+*.sqlite3
+__pycache__/
+*.pyc
+.venv/
+target/
+build/
+dist/
+.research-local/
+.vm-local/
+.vagrant/
+credentials/
+secrets/
+private-keys/
+*.credentials
+*.vault-password
+*.qcow2
+*.vdi
+*.vmdk
+*.ova
+*.ovf
+*.box
+*.iso
+*.pcap
+*.pcapng
+*.log
+*.ndjson
+!docs/process/decisions-and-evidence.md
+
+# Локальные инструкции и живой список работы владельца.
+/CLAUDE.md
+/TASKS.md
+/TASKS_RU.md
+/OLD_TASKS.md
+/OLD_TASKS_RU.md
+
+# Импортированный проект-источник для разового переноса опыта.
+temp/
+
+# Редакторы и локальные настройки агентов.
+.idea/
+.vscode/
+.codex/
+.claude/
+.agents/
+
+# Книжные заметки ведутся в закрытом журнале вне репозитория.
+/notes/
+/skills/
+.history/
+*.code-workspace
+*.swp
+*.swo
+*~
+
+# Возможные артефакты Rust после прототипных проверок.
+**/*.rs.bk
+**/mutants.out*/
+*.pdb

@@ -1,0 +1,18 @@
+# Пояснительный пример, НЕ действующая схема и НЕ готовый конфигурационный файл.
+source:
+  forge: github
+  canonical_url: https://github.com/matthart1983/netwatch
+  repository_id: '<numeric ID returned and verified via API>'
+  owner_id: '<verified owner ID>'
+  state: observing  # не включён в APT/DNF до подтверждения
+families:
+  - name: netwatch
+    packages:
+      deb: [netwatch]
+      rpm: [netwatch]
+policy:
+  modes: [strict, attested]
+  selected_channel: stable
+  source_preference: supplemental
+  discover_other_repositories: false
+  auto_fetch_foreign_system_dependencies: false

@@ -1,11 +1,15 @@
 # Pakomichi — a package bridge from Git releases to native package managers
 
+<div align="center">
+
 [![Rust 1.94.1](https://img.shields.io/badge/Rust-1.94.1-000000?logo=rust&logoColor=white)](rust-toolchain.toml)
 [![Code: MIT OR Apache-2.0](https://img.shields.io/badge/code-MIT%20OR%20Apache--2.0-blue.svg)](LICENSING.md)
 [![Docs: CC BY 4.0](https://img.shields.io/badge/docs-CC%20BY%204.0-lightgrey.svg)](LICENSE-DOCS)
 ![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange.svg)
 
-[Russian](README.ru.md)
+**English** · [Русский](README.ru.md)
+
+</div>
 
 > **Status:** requirements baseline for the design and development of 0.1 alpha, dated 2026-10-18. This repository currently contains documentation, **not a working program**. Pakomichi is the agreed project name. The primary CLI command is `pchi`; `pakomichi` is its full-name alias.
 

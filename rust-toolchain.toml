@@ -1,0 +1,7 @@
+# Verified on the development host on 2026-10-18 and accepted as the initial
+# implementation baseline by ADR-015. This pin does not by itself complete the
+# library and operational prototype checks required by the engineering baseline.
+[toolchain]
+channel = "1.94.1"
+profile = "minimal"
+components = ["rustfmt", "clippy"]

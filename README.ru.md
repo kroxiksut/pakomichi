@@ -1,11 +1,15 @@
 # Pakomichi — пакетный мост от Git-релизов к штатным пакетным менеджерам
 
+<div align="center">
+
 [![Rust 1.94.1](https://img.shields.io/badge/Rust-1.94.1-000000?logo=rust&logoColor=white)](rust-toolchain.toml)
 [![Code: MIT OR Apache-2.0](https://img.shields.io/badge/code-MIT%20OR%20Apache--2.0-blue.svg)](LICENSING.md)
 [![Docs: CC BY 4.0](https://img.shields.io/badge/docs-CC%20BY%204.0-lightgrey.svg)](LICENSE-DOCS)
 ![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange.svg)
 
-[English](README.md)
+[English](README.md) · **Русский**
+
+</div>
 
 > **Состояние:** исходный комплект требований для проектирования и разработки 0.1 alpha, 18.10.2026. Это документация, **не работающая программа**. Pakomichi — согласованное название проекта. Основная команда CLI — `pchi`; `pakomichi` — её полный алиас.
 
