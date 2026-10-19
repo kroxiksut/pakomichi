@@ -1,10 +1,11 @@
-# Пояснительный пример, НЕ действующая схема и НЕ готовый конфигурационный файл.
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Illustrative example only: NOT an active schema and NOT a ready-to-use configuration file.
 source:
   forge: github
   canonical_url: https://github.com/matthart1983/netwatch
   repository_id: '<numeric ID returned and verified via API>'
   owner_id: '<verified owner ID>'
-  state: observing  # не включён в APT/DNF до подтверждения
+  state: observing  # not enabled in APT/DNF until confirmed
 families:
   - name: netwatch
     packages:

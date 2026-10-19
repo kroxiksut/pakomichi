@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+[Unit]
+Description=Pakomichi P0-004 loopback socket
+
+[Socket]
+ListenStream=127.0.0.1:18081
+NoDelay=true
+
+[Install]
+WantedBy=sockets.target

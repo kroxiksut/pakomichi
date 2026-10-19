@@ -1,6 +1,6 @@
 # Contributing to Pakomichi
 
-Pakomichi is in the concept stage; no implementation code has been published yet. Start by reading [AGENTS.md](AGENTS.md), the [architecture overview](docs/architecture/overview.md), and the [decision records](docs/decisions/INDEX.md).
+Pakomichi is in the pre-alpha scaffold stage; no product behavior has been implemented yet. Start by reading [AGENTS.md](AGENTS.md), the [architecture overview](docs/en/architecture/overview.md), and the [decision records](docs/en/decisions/INDEX.md).
 
 - For a new feature, provide its goal, boundary, relationship to v0.1, alternatives, and acceptance criteria.
 - For a defect, provide a reproducible Linux environment, APT/DNF versions, logs without tokens or secrets, and the expected and actual behavior.
@@ -8,6 +8,8 @@ Pakomichi is in the concept stage; no implementation code has been published yet
 - For research, provide a reproducible script or commands, pinned versions, a PASS/FAIL/INCONCLUSIVE result, and links to primary sources.
 
 Do not include private keys, tokens, personal-machine data, or real internal server addresses in a pull request. Run package-manager tests in a VM or container with isolated package state.
+
+Before submitting a source change, install Python 3 and `cargo-deny` 0.19.0, then run `./scripts/quality.ps1`. The script applies the repository's common secret-signature, formatting, lint, Rust and SQLite test, advisory, license, and source checks. The signature scan supplements review and proper secret handling; it does not prove that arbitrary credentials are absent.
 
 ## Contribution licensing
 

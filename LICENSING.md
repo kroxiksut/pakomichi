@@ -32,4 +32,5 @@ Incoming source code and code-like contributions follow `MIT OR Apache-2.0`. Inc
 - These licenses apply only to material for which the Pakomichi contributors have authority to grant the stated rights.
 - Pakomichi licensing does not change the licenses of third-party programs, `.deb`/`.rpm` packages, libraries, copied text, images, or other external material that Pakomichi serves or uses.
 - Third-party material retains its own license, copyright, attribution, and notice requirements. Mark it clearly instead of applying Pakomichi's default licenses.
+- Required notices for redistributed dependency material are collected in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); that material retains the stated third-party terms.
 - Trademarks, the logo, and the right to present work publicly as an official Pakomichi project are not automatically licensed with source code or documentation.

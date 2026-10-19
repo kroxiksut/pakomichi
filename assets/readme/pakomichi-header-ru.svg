@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1600" height="460" viewBox="0 0 1600 460" role="img" aria-labelledby="title desc" xml:lang="ru">
+  <title id="title">Pakomichi</title>
+  <desc id="desc">Pakomichi — дружелюбный проводник пакетов из GitHub Releases в штатные пакеты ОС.</desc>
+  <defs>
+    
+  <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FFFCF5"/><stop offset="1" stop-color="#F6EFDF"/></linearGradient>
+  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#DFEBDC"/><stop offset=".58" stop-color="#F4E8C8"/><stop offset="1" stop-color="#F6DEC2"/></linearGradient>
+  <linearGradient id="grass" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#B7C79E"/><stop offset="1" stop-color="#6F9A79"/></linearGradient>
+  <linearGradient id="leaf" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#567B60"/><stop offset="1" stop-color="#294F48"/></linearGradient>
+  <linearGradient id="face" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FFF3D3"/><stop offset="1" stop-color="#EAC9A4"/></linearGradient>
+  <linearGradient id="coat" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#608778"/><stop offset="1" stop-color="#325C54"/></linearGradient>
+  <linearGradient id="orange" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#F3BB79"/><stop offset="1" stop-color="#D48A52"/></linearGradient>
+  <filter id="shadow" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#274139" flood-opacity=".12"/></filter>
+  <filter id="smallshadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#4C5E48" flood-opacity=".17"/></filter>
+  <clipPath id="heroclip"><rect x="48" y="210" width="980" height="558" rx="31"/></clipPath>
+  <g id="spark" stroke="#DDA762" stroke-width="2.6" stroke-linecap="round"><path d="M0 -10 V10 M-10 0 H10"/><circle cx="0" cy="0" r="3" fill="#F1C98A" stroke="none"/></g>
+  <g id="parcel" stroke="#7B654B" stroke-linecap="round" stroke-linejoin="round" stroke-width="3.5">
+    <rect x="0" y="0" width="54" height="45" rx="7" fill="#E5AD71"/>
+    <path d="M0 12 L27 23 L54 12 M27 23 V45" stroke="#FAE2B6" fill="none"/>
+    <path d="M22 0 V18 L32 18 V0" fill="#F4DBAC" stroke="none"/>
+  </g>
+  <g id="tree">
+    <path d="M0 2 V79" stroke="#6B7159" stroke-width="11" stroke-linecap="round"/>
+    <path d="M0 -100 C-14 -74 -46 -43 -45 -25 C-43 -13 -28 -11 -23 -10 C-57 -1 -50 24 -29 24 H29 C50 24 57 -1 23 -10 C28 -11 43 -13 45 -25 C46 -43 14 -74 0 -100Z" fill="url(#leaf)"/>
+    <path d="M0 -80 C-11 -48 -28 -29 -30 -20" fill="none" stroke="#7EA080" stroke-width="7" stroke-linecap="round" opacity=".5"/>
+  </g>
+  <g id="mascot">
+    <!-- A unique parcel-path sprite, with folded-paper ears and fern cap -->
+    <ellipse cx="144" cy="346" rx="114" ry="18" fill="#56705A" opacity=".16"/>
+    <!-- softly rounded satchel and parcel -->
+    <path d="M208 173 C248 162 280 178 282 205 L281 285 Q276 306 245 306 L207 302Z" fill="#B87E56" stroke="#7A5C47" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M220 193 Q248 180 266 203 L269 275 Q252 292 221 282Z" fill="url(#orange)"/>
+    <path d="M222 225 H270" stroke="#B67B51" stroke-width="5"/>
+    <rect x="237" y="226" width="24" height="22" rx="4" fill="#FFF4D6"/>
+    <path d="M244 236 H254 M249 231 V241" stroke="#527463" stroke-width="3" stroke-linecap="round"/>
+    <path d="M213 174 Q239 201 219 267" fill="none" stroke="#7E5C47" stroke-width="12" stroke-linecap="round"/>
+    <!-- waving small leafy tail -->
+    <path d="M52 257 Q-7 245 20 207 Q29 235 66 230Z" fill="#719781" stroke="#406B5E" stroke-width="5"/>
+    <!-- shoes -->
+    <path d="M87 313 L84 334 Q80 346 56 345 L44 343 Q38 328 61 320 L73 305Z" fill="#6A5949"/>
+    <path d="M173 314 L183 332 Q187 342 211 343 L220 336 Q217 322 196 319 L190 308Z" fill="#6A5949"/>
+    <!-- coat -->
+    <path d="M61 219 C64 188 90 177 139 178 C191 177 224 193 230 232 Q239 284 199 324 Q151 343 79 322 C48 298 51 263 61 219Z" fill="url(#coat)" stroke="#31594F" stroke-width="5"/>
+    <path d="M117 210 Q145 230 167 205 L167 324 Q144 328 123 324Z" fill="#749489" opacity=".65"/>
+    <path d="M146 231 V315" stroke="#2F574F" stroke-width="3" stroke-dasharray="5 14" opacity=".5"/>
+    <circle cx="147" cy="260" r="5.5" fill="#F2C78B"/><circle cx="147" cy="284" r="5.5" fill="#F2C78B"/>
+    <!-- arms and mittens -->
+    <path d="M74 241 Q45 250 42 282" fill="none" stroke="#3B6256" stroke-width="28" stroke-linecap="round"/>
+    <ellipse cx="44" cy="283" rx="17" ry="14" fill="#EED5B3" stroke="#C49A75" stroke-width="3"/>
+    <path d="M221 242 Q250 264 240 285" fill="none" stroke="#3B6256" stroke-width="27" stroke-linecap="round"/>
+    <ellipse cx="239" cy="287" rx="17" ry="14" fill="#EED5B3" stroke="#C49A75" stroke-width="3"/>
+    <!-- two paper-fold ears -->
+    <path d="M66 115 Q33 75 45 54 Q79 59 101 90Z" fill="url(#face)" stroke="#947C65" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M204 116 Q235 73 232 54 Q198 59 173 91Z" fill="url(#face)" stroke="#947C65" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M60 69 L87 99 L68 90Z M219 67 L187 98 L210 88Z" fill="#DFA78A" opacity=".8"/>
+    <!-- face -->
+    <path d="M40 143 C36 90 81 71 140 75 C203 73 248 97 247 146 C252 199 213 229 147 233 C77 231 37 194 40 143Z" fill="url(#face)" stroke="#A18A71" stroke-width="5"/>
+    <path d="M66 141 Q101 119 131 128" fill="none" stroke="#FFF9E7" stroke-width="9" opacity=".45" stroke-linecap="round"/>
+    <!-- simple eyes, freckles and rosy cheeks -->
+    <ellipse cx="101" cy="163" rx="6" ry="9" fill="#33463D"/>
+    <ellipse cx="184" cy="163" rx="6" ry="9" fill="#33463D"/>
+    <circle cx="83" cy="180" r="15" fill="#ECA989" opacity=".52"/>
+    <circle cx="205" cy="180" r="15" fill="#ECA989" opacity=".52"/>
+    <path d="M134 177 Q144 189 154 177" fill="none" stroke="#835B4D" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="73" cy="174" r="2.6" fill="#A87761"/><circle cx="81" cy="168" r="2.4" fill="#A87761"/>
+    <circle cx="211" cy="168" r="2.4" fill="#A87761"/><circle cx="219" cy="174" r="2.6" fill="#A87761"/>
+    <!-- leaf bonnet / cap -->
+    <path d="M37 131 Q20 87 58 61 Q96 31 164 51 Q213 56 242 103 C205 92 178 89 145 96 Q92 103 37 131Z" fill="url(#leaf)" stroke="#31564B" stroke-width="5"/>
+    <path d="M45 119 Q110 69 194 81 Q222 84 248 104 Q188 105 159 110 Q102 115 45 119Z" fill="#749C77" stroke="#31564B" stroke-width="4"/>
+    <path d="M129 54 Q121 24 160 9 Q163 40 148 57Z" fill="#8BAF85" stroke="#3D6B56" stroke-width="4"/>
+    <path d="M133 43 Q145 33 150 22" stroke="#D8E3B2" fill="none" stroke-width="3"/>
+    <!-- thick scarf flowing in breeze -->
+    <path d="M69 216 Q92 229 121 231 Q178 235 206 206 L220 223 Q204 244 168 248 Q106 260 67 229Z" fill="#DE805F" stroke="#B45F4D" stroke-width="4"/>
+    <path d="M204 214 Q249 214 278 189 Q285 213 272 225 Q254 238 222 235Z" fill="#E89471" stroke="#B45F4D" stroke-width="4"/>
+    <path d="M253 217 L264 222" stroke="#F4C5A5" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  <g id="seal">
+    <circle cx="90" cy="90" r="83" fill="#E6EADB" stroke="#577967" stroke-width="5"/>
+    <path d="M15 115 Q77 51 169 120" fill="none" stroke="#93B28F" stroke-width="13" stroke-linecap="round"/>
+    <path d="M38 136 Q96 77 143 135" fill="none" stroke="#517E68" stroke-width="4" stroke-dasharray="3 12" stroke-linecap="round"/>
+    <use xlink:href="#parcel" x="61" y="54" transform="rotate(-8 88 77)"/>
+    <path d="M120 74 Q145 68 157 52" stroke="#507B69" stroke-width="7" stroke-linecap="round" fill="none"/>
+    <path d="M141 61 Q136 40 161 35 Q163 55 141 61Z" fill="#769C71"/>
+  </g>
+
+    <linearGradient id="bannerSky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFCF5"/>
+      <stop offset=".55" stop-color="#F8F2E4"/>
+      <stop offset="1" stop-color="#DCE9D8"/>
+    </linearGradient>
+    <linearGradient id="badgeFill" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#315A4E"/><stop offset="1" stop-color="#426E5B"/>
+    </linearGradient>
+    <clipPath id="allClip"><rect x="12" y="12" width="1576" height="436" rx="35"/></clipPath>
+  </defs>
+  <rect x="12" y="12" width="1576" height="436" rx="35" fill="url(#bannerSky)" stroke="#D2DBC9" stroke-width="2"/>
+  <g clip-path="url(#allClip)">
+    <!-- Warm, airy hills behind the package-delivery scene. -->
+    <circle cx="1307" cy="202" r="164" fill="#F5DCA8" opacity=".73"/>
+    <path d="M838 366 Q950 305 1091 345 Q1225 273 1345 342 Q1470 273 1630 348 L1630 490 H838Z" fill="#C5D6B7"/>
+    <path d="M795 410 Q997 335 1156 400 Q1309 323 1438 377 Q1550 342 1660 386 V500 H795Z" fill="#9EBB98"/>
+    <path d="M815 446 Q1054 373 1214 424 Q1413 369 1597 434 L1650 504 H800Z" fill="#729B7A"/>
+    <!-- A dotted golden pathway from the release station to the OS repository. -->
+    <path d="M933 469 Q1059 383 1186 407 Q1297 430 1380 391 Q1482 348 1602 397" fill="none" stroke="#C8A981" stroke-width="52" stroke-linecap="round" opacity=".55"/>
+    <path d="M933 469 Q1059 383 1186 407 Q1297 430 1380 391 Q1482 348 1602 397" fill="none" stroke="#F9DEB0" stroke-width="39" stroke-linecap="round"/>
+    <path d="M933 469 Q1059 383 1186 407 Q1297 430 1380 391 Q1482 348 1602 397" fill="none" stroke="#BF9875" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="3 14" opacity=".7"/>
+    <!-- Small release cabin. -->
+    <rect x="959" y="306" width="118" height="98" rx="12" fill="#FFF5D9" stroke="#A5A287" stroke-width="4"/>
+    <path d="M946 318 L1018 261 L1090 318Z" fill="#C77658" stroke="#935F4C" stroke-width="4.5" stroke-linejoin="round"/>
+    <path d="M1006 404 V352 Q1012 341 1020 341 Q1035 341 1035 355 V404" fill="#B78A63"/>
+    <text x="1018" y="300" font-family="Lato,DejaVu Sans,sans-serif" font-weight="900" text-anchor="middle" font-size="20" fill="#FFF5E5">GIT</text>
+    <!-- Repository cabin at journey's end. -->
+    <rect x="1466" y="308" width="105" height="95" rx="12" fill="#F9EACF" stroke="#9A9D7B" stroke-width="4"/>
+    <path d="M1451 318 L1519 265 L1585 318Z" fill="#648A79" stroke="#456858" stroke-width="4.5" stroke-linejoin="round"/>
+    <rect x="1502" y="339" width="32" height="54" rx="7" fill="#D0A274"/>
+    <text x="1519" y="301" font-family="Lato,DejaVu Sans,sans-serif" font-weight="900" text-anchor="middle" font-size="20" fill="#FAF5E5">OS</text>
+    <!-- Pako: the exact established vector mascot. -->
+    <use xlink:href="#mascot" transform="translate(1163 100) scale(.86)"/>
+    <use xlink:href="#parcel" transform="translate(1407 363) rotate(8) scale(.57)"/>
+    <use xlink:href="#spark" transform="translate(1109 180) scale(.83)"/>
+    <use xlink:href="#spark" transform="translate(1435 205) scale(1.2)"/>
+    <path d="M1133 93 Q1178 71 1238 90" fill="none" stroke="#FDF9E9" stroke-width="7" opacity=".6" stroke-linecap="round"/>
+    <!-- Understated vignette at left, preserving contrast for the text. -->
+    <path d="M0 0 H810 Q850 240 780 460 H0Z" fill="#FFFCF5" opacity=".38"/>
+  </g>
+  <!-- Seal icon and wordmark. -->
+  <use xlink:href="#seal" transform="translate(90 74) scale(.50)"/>
+  <text x="198" y="153" font-family="Comfortaa,DejaVu Sans,sans-serif" font-size="74" font-weight="700" letter-spacing="-2.7" fill="#315A4E">pakomichi</text>
+  <path d="M104 198 H738" stroke="#C6D0BB" stroke-width="2"/>
+  <!-- Locale-specific text. -->
+  <text x="103" y="262" font-family="Comfortaa,DejaVu Sans,sans-serif" font-size="39" font-weight="700" fill="#325A4F">Каждому пакету — свой путь.</text>
+  <text x="105" y="318" font-family="Lato,DejaVu Sans,sans-serif" font-size="27" fill="#6A7D6C">Из GitHub Releases — в штатные пакеты ОС.</text>
+  <!-- Quiet CLI identity (not a made-up executable command). -->
+  <rect x="104" y="351" width="174" height="58" rx="28" fill="url(#badgeFill)"/>
+  <text x="129" y="390" font-family="DejaVu Sans Mono,monospace" font-size="27" fill="#EAF0E2">pchi</text>
+  <use xlink:href="#spark" transform="translate(239 378) scale(.70)"/>
+  <text x="969" y="431" font-family="Lato,DejaVu Sans,sans-serif" font-size="14" font-weight="700" letter-spacing="1.5" fill="#315A4E">GIT RELEASES</text>
+  <text x="1530" y="431" text-anchor="end" font-family="Lato,DejaVu Sans,sans-serif" font-size="14" font-weight="700" letter-spacing="1.5" fill="#315A4E">ПАКЕТЫ ОС</text>
+</svg>

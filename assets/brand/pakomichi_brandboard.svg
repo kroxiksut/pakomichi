@@ -1,0 +1,174 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1600" height="1100" viewBox="0 0 1600 1100">
+<defs>
+  <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FFFCF5"/><stop offset="1" stop-color="#F6EFDF"/></linearGradient>
+  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#DFEBDC"/><stop offset=".58" stop-color="#F4E8C8"/><stop offset="1" stop-color="#F6DEC2"/></linearGradient>
+  <linearGradient id="grass" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#B7C79E"/><stop offset="1" stop-color="#6F9A79"/></linearGradient>
+  <linearGradient id="leaf" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#567B60"/><stop offset="1" stop-color="#294F48"/></linearGradient>
+  <linearGradient id="face" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FFF3D3"/><stop offset="1" stop-color="#EAC9A4"/></linearGradient>
+  <linearGradient id="coat" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#608778"/><stop offset="1" stop-color="#325C54"/></linearGradient>
+  <linearGradient id="orange" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#F3BB79"/><stop offset="1" stop-color="#D48A52"/></linearGradient>
+  <filter id="shadow" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#274139" flood-opacity=".12"/></filter>
+  <filter id="smallshadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#4C5E48" flood-opacity=".17"/></filter>
+  <clipPath id="heroclip"><rect x="48" y="210" width="980" height="558" rx="31"/></clipPath>
+  <g id="spark" stroke="#DDA762" stroke-width="2.6" stroke-linecap="round"><path d="M0 -10 V10 M-10 0 H10"/><circle cx="0" cy="0" r="3" fill="#F1C98A" stroke="none"/></g>
+  <g id="parcel" stroke="#7B654B" stroke-linecap="round" stroke-linejoin="round" stroke-width="3.5">
+    <rect x="0" y="0" width="54" height="45" rx="7" fill="#E5AD71"/>
+    <path d="M0 12 L27 23 L54 12 M27 23 V45" stroke="#FAE2B6" fill="none"/>
+    <path d="M22 0 V18 L32 18 V0" fill="#F4DBAC" stroke="none"/>
+  </g>
+  <g id="tree">
+    <path d="M0 2 V79" stroke="#6B7159" stroke-width="11" stroke-linecap="round"/>
+    <path d="M0 -100 C-14 -74 -46 -43 -45 -25 C-43 -13 -28 -11 -23 -10 C-57 -1 -50 24 -29 24 H29 C50 24 57 -1 23 -10 C28 -11 43 -13 45 -25 C46 -43 14 -74 0 -100Z" fill="url(#leaf)"/>
+    <path d="M0 -80 C-11 -48 -28 -29 -30 -20" fill="none" stroke="#7EA080" stroke-width="7" stroke-linecap="round" opacity=".5"/>
+  </g>
+  <g id="mascot">
+    <!-- A unique parcel-path sprite, with folded-paper ears and fern cap -->
+    <ellipse cx="144" cy="346" rx="114" ry="18" fill="#56705A" opacity=".16"/>
+    <!-- softly rounded satchel and parcel -->
+    <path d="M208 173 C248 162 280 178 282 205 L281 285 Q276 306 245 306 L207 302Z" fill="#B87E56" stroke="#7A5C47" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M220 193 Q248 180 266 203 L269 275 Q252 292 221 282Z" fill="url(#orange)"/>
+    <path d="M222 225 H270" stroke="#B67B51" stroke-width="5"/>
+    <rect x="237" y="226" width="24" height="22" rx="4" fill="#FFF4D6"/>
+    <path d="M244 236 H254 M249 231 V241" stroke="#527463" stroke-width="3" stroke-linecap="round"/>
+    <path d="M213 174 Q239 201 219 267" fill="none" stroke="#7E5C47" stroke-width="12" stroke-linecap="round"/>
+    <!-- waving small leafy tail -->
+    <path d="M52 257 Q-7 245 20 207 Q29 235 66 230Z" fill="#719781" stroke="#406B5E" stroke-width="5"/>
+    <!-- shoes -->
+    <path d="M87 313 L84 334 Q80 346 56 345 L44 343 Q38 328 61 320 L73 305Z" fill="#6A5949"/>
+    <path d="M173 314 L183 332 Q187 342 211 343 L220 336 Q217 322 196 319 L190 308Z" fill="#6A5949"/>
+    <!-- coat -->
+    <path d="M61 219 C64 188 90 177 139 178 C191 177 224 193 230 232 Q239 284 199 324 Q151 343 79 322 C48 298 51 263 61 219Z" fill="url(#coat)" stroke="#31594F" stroke-width="5"/>
+    <path d="M117 210 Q145 230 167 205 L167 324 Q144 328 123 324Z" fill="#749489" opacity=".65"/>
+    <path d="M146 231 V315" stroke="#2F574F" stroke-width="3" stroke-dasharray="5 14" opacity=".5"/>
+    <circle cx="147" cy="260" r="5.5" fill="#F2C78B"/><circle cx="147" cy="284" r="5.5" fill="#F2C78B"/>
+    <!-- arms and mittens -->
+    <path d="M74 241 Q45 250 42 282" fill="none" stroke="#3B6256" stroke-width="28" stroke-linecap="round"/>
+    <ellipse cx="44" cy="283" rx="17" ry="14" fill="#EED5B3" stroke="#C49A75" stroke-width="3"/>
+    <path d="M221 242 Q250 264 240 285" fill="none" stroke="#3B6256" stroke-width="27" stroke-linecap="round"/>
+    <ellipse cx="239" cy="287" rx="17" ry="14" fill="#EED5B3" stroke="#C49A75" stroke-width="3"/>
+    <!-- two paper-fold ears -->
+    <path d="M66 115 Q33 75 45 54 Q79 59 101 90Z" fill="url(#face)" stroke="#947C65" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M204 116 Q235 73 232 54 Q198 59 173 91Z" fill="url(#face)" stroke="#947C65" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M60 69 L87 99 L68 90Z M219 67 L187 98 L210 88Z" fill="#DFA78A" opacity=".8"/>
+    <!-- face -->
+    <path d="M40 143 C36 90 81 71 140 75 C203 73 248 97 247 146 C252 199 213 229 147 233 C77 231 37 194 40 143Z" fill="url(#face)" stroke="#A18A71" stroke-width="5"/>
+    <path d="M66 141 Q101 119 131 128" fill="none" stroke="#FFF9E7" stroke-width="9" opacity=".45" stroke-linecap="round"/>
+    <!-- simple eyes, freckles and rosy cheeks -->
+    <ellipse cx="101" cy="163" rx="6" ry="9" fill="#33463D"/>
+    <ellipse cx="184" cy="163" rx="6" ry="9" fill="#33463D"/>
+    <circle cx="83" cy="180" r="15" fill="#ECA989" opacity=".52"/>
+    <circle cx="205" cy="180" r="15" fill="#ECA989" opacity=".52"/>
+    <path d="M134 177 Q144 189 154 177" fill="none" stroke="#835B4D" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="73" cy="174" r="2.6" fill="#A87761"/><circle cx="81" cy="168" r="2.4" fill="#A87761"/>
+    <circle cx="211" cy="168" r="2.4" fill="#A87761"/><circle cx="219" cy="174" r="2.6" fill="#A87761"/>
+    <!-- leaf bonnet / cap -->
+    <path d="M37 131 Q20 87 58 61 Q96 31 164 51 Q213 56 242 103 C205 92 178 89 145 96 Q92 103 37 131Z" fill="url(#leaf)" stroke="#31564B" stroke-width="5"/>
+    <path d="M45 119 Q110 69 194 81 Q222 84 248 104 Q188 105 159 110 Q102 115 45 119Z" fill="#749C77" stroke="#31564B" stroke-width="4"/>
+    <path d="M129 54 Q121 24 160 9 Q163 40 148 57Z" fill="#8BAF85" stroke="#3D6B56" stroke-width="4"/>
+    <path d="M133 43 Q145 33 150 22" stroke="#D8E3B2" fill="none" stroke-width="3"/>
+    <!-- thick scarf flowing in breeze -->
+    <path d="M69 216 Q92 229 121 231 Q178 235 206 206 L220 223 Q204 244 168 248 Q106 260 67 229Z" fill="#DE805F" stroke="#B45F4D" stroke-width="4"/>
+    <path d="M204 214 Q249 214 278 189 Q285 213 272 225 Q254 238 222 235Z" fill="#E89471" stroke="#B45F4D" stroke-width="4"/>
+    <path d="M253 217 L264 222" stroke="#F4C5A5" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  <g id="seal">
+    <circle cx="90" cy="90" r="83" fill="#E6EADB" stroke="#577967" stroke-width="5"/>
+    <path d="M15 115 Q77 51 169 120" fill="none" stroke="#93B28F" stroke-width="13" stroke-linecap="round"/>
+    <path d="M38 136 Q96 77 143 135" fill="none" stroke="#517E68" stroke-width="4" stroke-dasharray="3 12" stroke-linecap="round"/>
+    <use xlink:href="#parcel" x="61" y="54" transform="rotate(-8 88 77)"/>
+    <path d="M120 74 Q145 68 157 52" stroke="#507B69" stroke-width="7" stroke-linecap="round" fill="none"/>
+    <path d="M141 61 Q136 40 161 35 Q163 55 141 61Z" fill="#769C71"/>
+  </g>
+</defs>
+<rect width="1600" height="1100" fill="url(#paper)"/>
+<!-- very faint handmade flecks -->
+<g fill="#8EAB8D" opacity=".24"><circle cx="19" cy="127" r="2"/><circle cx="692" cy="84" r="2.5"/><circle cx="1566" cy="140" r="3"/><circle cx="750" cy="1081" r="2"/><circle cx="1490" cy="1051" r="2"/></g>
+<!-- header -->
+<use xlink:href="#seal" x="47" y="25" width="180" height="180" transform="translate(0 0) scale(.78)"/>
+<text x="222" y="93" font-family="Comfortaa, DejaVu Sans, sans-serif" font-weight="700" font-size="59" letter-spacing="-3" fill="#315A4E">pakomichi</text>
+<text x="224" y="127" font-family="Lato, sans-serif" font-size="19" letter-spacing="2.7" fill="#90765A">EVERY PACKAGE FINDS ITS WAY</text>
+<rect x="1159" y="55" width="388" height="87" rx="43" fill="#E7EEDD" stroke="#A9B99E" stroke-width="2"/>
+<text x="1193" y="92" font-family="Comfortaa, sans-serif" font-size="24" font-weight="bold" fill="#325B4C">pchi</text>
+<text x="1193" y="117" font-family="Lato, sans-serif" font-size="14" fill="#6A816B">git releases → native packages</text>
+<use xlink:href="#spark" transform="translate(1500 96) scale(1.1)"/>
+<!-- HERO -->
+<rect x="48" y="210" width="980" height="558" rx="31" fill="url(#sky)" stroke="#D8DECD" stroke-width="2"/>
+<g clip-path="url(#heroclip)">
+ <circle cx="712" cy="368" r="125" fill="#FBE5BB" opacity=".84"/>
+ <path d="M40 496 Q175 380 341 475 Q463 404 609 466 Q821 361 1031 487 V769 H48Z" fill="#CAD6B7"/>
+ <path d="M40 535 Q266 432 427 533 Q606 448 762 524 Q900 471 1050 529 V769 H48Z" fill="#A6BE9A"/>
+ <path d="M40 642 Q300 519 509 617 Q764 520 1038 638 V770 H48Z" fill="url(#grass)"/>
+ <path d="M-40 759 Q119 652 345 689 Q477 704 592 630 Q718 562 954 653 Q1025 686 1098 690 V773H-40Z" fill="#709A7C"/>
+ <!-- twisting golden pathway -->
+ <path d="M162 761 Q151 679 331 654 Q445 639 498 676 Q544 709 607 684 Q686 655 783 631 Q849 616 939 621" fill="none" stroke="#D3B48C" stroke-width="76" stroke-linecap="round" opacity=".9"/>
+ <path d="M162 761 Q151 679 331 654 Q445 639 498 676 Q544 709 607 684 Q686 655 783 631 Q849 616 939 621" fill="none" stroke="#F5D9A8" stroke-width="52" stroke-linecap="round"/>
+ <path d="M158 759 Q147 683 333 655 Q446 640 497 677 Q547 714 612 681 Q689 647 786 630 Q847 617 937 621" fill="none" stroke="#CC9E73" stroke-width="3" stroke-dasharray="4 18" stroke-linecap="round" opacity=".65"/>
+ <!-- stylized forest trees -->
+ <use xlink:href="#tree" transform="translate(96 540) scale(.74)"/>
+ <use xlink:href="#tree" transform="translate(178 535) scale(.5)" opacity=".8"/>
+ <use xlink:href="#tree" transform="translate(886 524) scale(.67)"/>
+ <use xlink:href="#tree" transform="translate(975 528) scale(.46)"/>
+ <use xlink:href="#tree" transform="translate(821 538) scale(.34)" opacity=".7"/>
+ <!-- station at left, Git Releases -->
+ <rect x="182" y="497" width="129" height="117" rx="13" fill="#F9EED7" stroke="#9E9D78" stroke-width="5"/>
+ <path d="M160 511 L246 450 L334 511Z" fill="#C97557" stroke="#925D47" stroke-width="5" stroke-linejoin="round"/>
+ <path d="M238 612 V554 Q243 541 255 541 Q267 541 270 554 V612Z" fill="#B17E58"/>
+ <path d="M221 525 H278" stroke="#7E9B75" stroke-width="5" stroke-linecap="round"/>
+ <text x="251" y="484" text-anchor="middle" font-family="Lato" font-weight="900" font-size="19" fill="#F9EED7">GIT</text>
+ <text x="248" y="647" text-anchor="middle" font-family="Lato" font-size="17" font-weight="bold" fill="#375F53">RELEASES</text>
+ <!-- station on right, native repo house -->
+ <rect x="793" y="485" width="139" height="129" rx="13" fill="#F6E6C9" stroke="#9E9D78" stroke-width="5"/>
+ <path d="M771 502 L860 432 L949 502Z" fill="#648A79" stroke="#456858" stroke-width="5" stroke-linejoin="round"/>
+ <rect x="839" y="531" width="49" height="70" rx="9" fill="#D0A274"/>
+ <path d="M830 467 H891" stroke="#F3E1B8" stroke-width="5" stroke-linecap="round"/>
+ <text x="862" y="489" text-anchor="middle" font-family="Lato" font-size="18" font-weight="900" fill="#F8F4E3">OS</text>
+ <text x="861" y="647" text-anchor="middle" font-family="Lato" font-size="17" font-weight="bold" fill="#375F53">REPOSITORY</text>
+ <!-- protagonist a little off center -->
+ <use xlink:href="#mascot" transform="translate(358 299) scale(1.08)" filter="url(#smallshadow)"/>
+ <!-- magical parcel at route -->
+ <use xlink:href="#parcel" transform="translate(733 620) rotate(9) scale(.67)"/>
+ <use xlink:href="#spark" transform="translate(665 531) scale(.8)"/>
+ <use xlink:href="#spark" transform="translate(768 412) scale(1.2)"/>
+ <use xlink:href="#spark" transform="translate(465 351) scale(.8)"/>
+ <path d="M132 320 Q203 299 264 319" fill="none" stroke="#FAFBED" stroke-width="8" stroke-linecap="round" opacity=".65"/>
+ <path d="M773 295 Q841 277 890 305" fill="none" stroke="#FAFBED" stroke-width="8" stroke-linecap="round" opacity=".65"/>
+ <!-- foreground foliage -->
+ <g fill="#426B56"><ellipse cx="80" cy="748" rx="60" ry="28"/><ellipse cx="984" cy="754" rx="71" ry="25"/><ellipse cx="296" cy="762" rx="65" ry="20"/></g>
+</g>
+<!-- scene overlay label -->
+<rect x="77" y="234" width="490" height="64" rx="22" fill="#FFF9EA" fill-opacity=".87"/>
+<text x="101" y="263" font-family="Comfortaa" font-weight="700" font-size="21" fill="#365C52">A little journey for every package</text>
+<text x="102" y="284" font-family="Lato" font-size="15" fill="#7D816A">From GitHub Releases to your package manager</text>
+<!-- Right: mascot close-up -->
+<rect x="1049" y="210" width="503" height="272" rx="31" fill="#E7E9D9" stroke="#D7DAC8" stroke-width="2"/>
+<circle cx="1178" cy="344" r="106" fill="#F8F1DF"/>
+<use xlink:href="#mascot" transform="translate(1103 239) scale(.64)"/>
+<text x="1339" y="282" font-family="Lato" font-size="15" font-weight="900" letter-spacing="2.7" fill="#AE7C55">01 / MASCOT</text>
+<text x="1339" y="325" font-family="Comfortaa" font-weight="700" font-size="34" fill="#345A4E">Pako</text>
+<text x="1339" y="360" font-family="Lato" font-size="21" fill="#577364">the package guide</text>
+<text x="1339" y="394" font-family="Lato" font-size="17" fill="#6B7B6B">Friendly, curious,</text>
+<text x="1339" y="418" font-family="Lato" font-size="17" fill="#6B7B6B">always on the move.</text>
+<!-- Right: mark and wordmark -->
+<rect x="1049" y="501" width="503" height="267" rx="31" fill="#315A4E"/>
+<circle cx="1167" cy="633" r="92" fill="#F1EDD9"/>
+<use xlink:href="#seal" transform="translate(1088 554) scale(.875)"/>
+<text x="1315" y="572" font-family="Lato" font-size="15" font-weight="900" letter-spacing="2.5" fill="#E9BA82">02 / SYMBOL</text>
+<text x="1315" y="627" font-family="Comfortaa" font-size="35" font-weight="bold" fill="#F6ECD7">pchi</text>
+<text x="1315" y="668" font-family="Lato" font-size="18" fill="#C1D3BA">a path + a parcel</text>
+<text x="1315" y="698" font-family="Lato" font-size="16" fill="#C1D3BA">a starting point for app icons</text>
+<!-- Bottom left palette -->
+<rect x="48" y="788" width="762" height="263" rx="28" fill="#FFFCF4" stroke="#E0D9C9" stroke-width="2"/>
+<text x="82" y="834" font-family="Lato" font-size="16" font-weight="900" letter-spacing="2.7" fill="#A87B59">03 / COLOUR STORY</text>
+<text x="82" y="860" font-family="Lato" font-size="18" fill="#738679">Forest · paper · sunshine · warmth</text>
+<rect x="82" y="888" width="122" height="78" rx="16" fill="#315A4E" stroke="#C9C5AF" stroke-width=".9"/><text x="82" y="990" font-family="Lato" font-size="17" font-weight="bold" fill="#344D43">Forest</text><text x="82" y="1013" font-family="DejaVu Sans Mono" font-size="12.5" fill="#8A8271">#315A4E</text><rect x="223" y="888" width="122" height="78" rx="16" fill="#789A78" stroke="#C9C5AF" stroke-width=".9"/><text x="223" y="990" font-family="Lato" font-size="17" font-weight="bold" fill="#344D43">Sage</text><text x="223" y="1013" font-family="DejaVu Sans Mono" font-size="12.5" fill="#8A8271">#789A78</text><rect x="364" y="888" width="122" height="78" rx="16" fill="#F7F0DF" stroke="#C9C5AF" stroke-width=".9"/><text x="364" y="990" font-family="Lato" font-size="17" font-weight="bold" fill="#344D43">Paper</text><text x="364" y="1013" font-family="DejaVu Sans Mono" font-size="12.5" fill="#8A8271">#F7F0DF</text><rect x="505" y="888" width="122" height="78" rx="16" fill="#E4AD71" stroke="#C9C5AF" stroke-width=".9"/><text x="505" y="990" font-family="Lato" font-size="17" font-weight="bold" fill="#344D43">Parcel</text><text x="505" y="1013" font-family="DejaVu Sans Mono" font-size="12.5" fill="#8A8271">#E4AD71</text><rect x="646" y="888" width="122" height="78" rx="16" fill="#DE805F" stroke="#C9C5AF" stroke-width=".9"/><text x="646" y="990" font-family="Lato" font-size="17" font-weight="bold" fill="#344D43">Scarf</text><text x="646" y="1013" font-family="DejaVu Sans Mono" font-size="12.5" fill="#8A8271">#DE805F</text>
+<!-- Bottom right type + secondary use -->
+<rect x="833" y="788" width="719" height="263" rx="28" fill="#F1E5D0" stroke="#E2D7C3" stroke-width="2"/>
+<text x="869" y="834" font-family="Lato" font-size="16" font-weight="900" letter-spacing="2.7" fill="#A87B59">04 / TYPOGRAPHY &amp; VOICE</text>
+<text x="869" y="905" font-family="Comfortaa" font-size="48" font-weight="700" fill="#315A4E">pakomichi</text>
+<text x="871" y="938" font-family="Lato" font-size="18" fill="#697D68">Round and welcoming · Comfortaa + Lato</text>
+<path d="M869 957 H1510" stroke="#D4C3AA" stroke-width="2"/>
+<text x="869" y="992" font-family="Lato" font-size="20" font-weight="bold" fill="#AD7554">“Pchi!”</text>
+<text x="959" y="992" font-family="Lato" font-size="18" fill="#6F7F6B">— Achoo! Installed!</text>
+<text x="48" y="1082" font-family="Lato" font-size="15" fill="#7A8977">PAKOMICHI · IDENTITY EXPLORATION · v0.1</text>
+<text x="1552" y="1082" text-anchor="end" font-family="Lato" font-size="15" fill="#7A8977">© concept study / not a final production logo</text>
+</svg>

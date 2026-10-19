@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+[package]
+name = "pakomichi-stack-probe"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.94.1"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace]
+resolver = "3"
+
+[dependencies]
+listenfd = "=1.0.2"
+tokio = { version = "=1.53.3", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+
+[dev-dependencies]
+rpm = { version = "=0.30.2", default-features = false, features = ["gzip-compression", "payload"] }
+rusqlite = { version = "=0.40.2", default-features = false, features = ["backup"] }
+
+[package.metadata.deb]
+name = "pakomichi-stack-probe"
+maintainer = "Pakomichi test fixture <noreply@example.invalid>"
+copyright = "2026, Pakomichi contributors"
+license-file = ["../../LICENSE-MIT", "0"]
+extended-description = "Disposable P0-004 packaging probe; not a supported Pakomichi release."
+section = "utils"
+priority = "optional"
+assets = [["target/release/pakomichi-stack-probe", "usr/bin/pakomichi-stack-probe", "755"]]
+
+[package.metadata.generate-rpm]
+name = "pakomichi-stack-probe"
+summary = "Disposable Pakomichi P0-004 packaging probe"
+license = "MIT OR Apache-2.0"
+assets = [{ source = "target/release/pakomichi-stack-probe", dest = "/usr/bin/pakomichi-stack-probe", mode = "0755" }]
+
+[lints.rust]
+unsafe_code = "deny"
+unused_must_use = "deny"
+
+[lints.clippy]
+dbg_macro = "deny"
+unwrap_used = "deny"

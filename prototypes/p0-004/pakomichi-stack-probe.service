@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+[Unit]
+Description=Pakomichi P0-004 stack probe
+Requires=pakomichi-stack-probe.socket
+After=network.target
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/pakomichi-stack-probe
+User=pakomichi
+Group=pakomichi
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectProc=invisible
+ProtectSystem=strict
+ReadWritePaths=/var/lib/pakomichi /var/cache/pakomichi
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

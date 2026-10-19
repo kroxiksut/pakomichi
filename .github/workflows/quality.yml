@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+name: Quality
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Verify unprivileged execution
+        run: test "$(id -u)" -ne 0
+
+      - name: Install pinned Rust toolchain
+        # Without a name, rustup installs the toolchain from rust-toolchain.toml.
+        run: |
+          rustup toolchain install --no-self-update
+          rustup show active-toolchain
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --version 0.19.0 --locked
+
+      - name: Run quality gate
+        shell: pwsh
+        run: ./scripts/quality.ps1

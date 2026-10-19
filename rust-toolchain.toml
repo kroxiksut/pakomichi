@@ -1,6 +1,7 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
 # Verified on the development host on 2026-10-18 and accepted as the initial
-# implementation baseline by ADR-015. This pin does not by itself complete the
-# library and operational prototype checks required by the engineering baseline.
+# implementation baseline by ADR-015. The runtime and library stack built on it
+# is accepted separately by ADR-017.
 [toolchain]
 channel = "1.94.1"
 profile = "minimal"

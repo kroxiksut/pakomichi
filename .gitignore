@@ -35,7 +35,7 @@ private-keys/
 *.pcapng
 *.log
 *.ndjson
-!docs/process/decisions-and-evidence.md
+!docs/*/process/decisions-and-evidence.md
 
 # Локальные инструкции и живой список работы владельца.
 /CLAUDE.md
@@ -51,10 +51,11 @@ temp/
 .idea/
 .vscode/
 .codex/
+.cargo/
 .claude/
 .agents/
 
-# Книжные заметки ведутся в закрытом журнале вне репозитория.
+# Локальные рабочие папки.
 /notes/
 /skills/
 .history/
@@ -67,3 +68,8 @@ temp/
 **/*.rs.bk
 **/mutants.out*/
 *.pdb
+
+# Каталоги и файлы GnuPG home с секретным материалом.
+private-keys-v1.d/
+openpgp-revocs.d/
+secring.gpg
