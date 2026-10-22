@@ -9,6 +9,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 pub const REASON_SCHEMA_VERSION: u16 = 1;
 
+/// Largest serialized reason event accepted by [`ReasonEvent::from_json`].
+pub const MAX_REASON_EVENT_JSON_BYTES: usize = 16 * 1024;
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ReasonCode {
@@ -28,10 +31,17 @@ pub enum ReasonCode {
     EForgeUnavailable,
     EAdminApplyFailed,
     EDiskExhausted,
+    EArtifactMalformed,
+    EEvidenceDowngrade,
+    EReleaseApprovalRequired,
+    EExecutionPolicy,
+    ESecurityContext,
+    EChannelUnclear,
+    ESystemNamespaceUnknown,
 }
 
 impl ReasonCode {
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 23] = [
         Self::ERepoIdChanged,
         Self::EOwnerTransfer,
         Self::EAssetMutated,
@@ -48,6 +58,13 @@ impl ReasonCode {
         Self::EForgeUnavailable,
         Self::EAdminApplyFailed,
         Self::EDiskExhausted,
+        Self::EArtifactMalformed,
+        Self::EEvidenceDowngrade,
+        Self::EReleaseApprovalRequired,
+        Self::EExecutionPolicy,
+        Self::ESecurityContext,
+        Self::EChannelUnclear,
+        Self::ESystemNamespaceUnknown,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -68,6 +85,13 @@ impl ReasonCode {
             Self::EForgeUnavailable => "E_FORGE_UNAVAILABLE",
             Self::EAdminApplyFailed => "E_ADMIN_APPLY_FAILED",
             Self::EDiskExhausted => "E_DISK_EXHAUSTED",
+            Self::EArtifactMalformed => "E_ARTIFACT_MALFORMED",
+            Self::EEvidenceDowngrade => "E_EVIDENCE_DOWNGRADE",
+            Self::EReleaseApprovalRequired => "E_RELEASE_APPROVAL_REQUIRED",
+            Self::EExecutionPolicy => "E_EXECUTION_POLICY",
+            Self::ESecurityContext => "E_SECURITY_CONTEXT",
+            Self::EChannelUnclear => "E_CHANNEL_UNCLEAR",
+            Self::ESystemNamespaceUnknown => "E_SYSTEM_NAMESPACE_UNKNOWN",
         }
     }
 }
@@ -321,7 +345,15 @@ impl ReasonEvent {
         serde_json::to_string(self)
     }
 
+    /// Parses one reason event. Input longer than
+    /// [`MAX_REASON_EVENT_JSON_BYTES`] is rejected before parsing (ADR-019).
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+        if json.len() > MAX_REASON_EVENT_JSON_BYTES {
+            return Err(serde_json::Error::custom(format!(
+                "reason event is {} bytes; the limit is {MAX_REASON_EVENT_JSON_BYTES}",
+                json.len()
+            )));
+        }
         serde_json::from_str(json)
     }
 }

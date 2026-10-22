@@ -4,11 +4,13 @@
 
 Это **не результаты испытаний**, а воспроизводимые технические задания. Фактический вывод фиксируется только в заполненном отчёте с логами и командами; ход работы отмечается в локальном `TASKS_RU.md`.
 
-- [R-001: приоритеты и конфликты APT/DNF](R-001-source-selection.md)
-- [R-002: подпись RPM и политика DNF](R-002-rpm-signatures.md)
+- [R-001: приоритеты и конфликты APT/DNF](R-001-source-selection.md); выполнен: [отчёт R-001](R-001-report.md)
+- [R-002: подпись RPM и политика DNF](R-002-rpm-signatures.md); [отчёт R-002](R-002-report.md) (PASS на AlmaLinux 9 и Fedora 44)
 - [R-003: GitHub immutable и attestations](R-003-github-provenance.md)
-- [R-004: локальная доставка и снимки](R-004-delivery-failure.md)
-- [R-005: доказательства происхождения в реальных репозиториях](R-005-provenance-survey.md) (входные данные для предложенного ADR-018)
+- [R-004: локальная доставка и снимки](R-004-delivery-failure.md); [отчёт R-004](R-004-report.md) (PASS для Debian 12, AlmaLinux 9 и Fedora 44)
+- [R-005: доказательства происхождения в реальных репозиториях](R-005-provenance-survey.md) (входные данные для предложенного ADR-018); [отчёт R-005](R-005-report.md) (PASS протокола; 100 репозиториев и проверенная подвыборка из 20)
+- [R-006: защищённые уровни Astra Linux](R-006-astra-protected-modes.md); [отчёт R-006](R-006-report.md) (PASS для Astra Linux 1.8.6)
+- [R-007: Windows — MSI-пакеты через локальный источник WinGet](R-007-windows-msi-winget.md) (не блокирует 0.1; только протокол, не выполнялся)
 - [План синтетических тестовых артефактов](test-fixtures-plan.md)
 - [Шаблон отчёта](RESULT-TEMPLATE.md)
 

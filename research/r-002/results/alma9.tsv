@@ -1,0 +1,13 @@
+platform	cell	policy	rpm_signature	repo_signature	expected	exit_code	operation_succeeded	installed	actual	verdict	notes
+alma9	signed-valid-required	required	valid	valid	allow	0	true	true	allow	PASS	native RPM signature and signed metadata
+alma9	unsigned-valid-required	required	none	valid	block	1	false	false	block	PASS	unsigned RPM under package check and RPM signature policy
+alma9	attested-explicit-permitted	explicit-attested	none	valid	allow	0	true	true	allow	PASS	per-repo package check disabled only after explicit modeled attestation verification
+alma9	attested-required-policy	required	none	valid	block	1	false	false	block	PASS	attestation must not replace mandatory embedded signature
+alma9	unconfirmed-refused-before-dnf	explicit-attested	none	valid	block	1	false	false	block	PASS	adapter refuses before writing a package-check exception
+alma9	corrupted-rpm	normal	corrupted	valid	block	1	false	false	block	PASS	corrupted embedded signature
+alma9	invalid-repomd-signature	normal	valid	invalid	block	1	false	false	block	PASS	repo_gpgcheck=1 rejects metadata before package installation
+alma9	rpm-replaced-after-metadata	normal	valid	valid	block	1	false	false	block	PASS	RPM bytes changed after createrepo metadata generation
+alma9	global-gpgcheck-disable-refused	guard-request	none	valid	block	64	false	false	block	PASS	guard refusal; native DNF was not invoked and global configuration was not changed
+alma9	metadata-key-a-baseline	normal	valid	valid	allow	0	true	false	allow	PASS	trusted metadata key A
+alma9	metadata-key-b-before-trust	normal	valid	untrusted	block	1	false	false	block	PASS	repository signed by B while only A is configured
+alma9	metadata-key-b-after-trust	normal	valid	valid	allow	0	true	false	allow	PASS	explicitly trusted metadata key B

@@ -1,0 +1,67 @@
+{
+  "claimed_coverage": {
+    "denominator_repositories": 100,
+    "strict_plus_attested": {
+      "percent": 7.0,
+      "repositories": 7
+    },
+    "strict_plus_attested_plus_signed": {
+      "percent": 14.0,
+      "repositories": 14
+    },
+    "with_pinned_theoretical_eligibility": {
+      "percent": 100.0,
+      "qualification": "eligibility only; quarantine behavior was not measured by R-005",
+      "repositories": 100
+    }
+  },
+  "claimed_latest_counts": {
+    "Attested-claimed": 1,
+    "Checksums-only": 8,
+    "Nothing-observed": 55,
+    "Signed-claimed": 7,
+    "Strict-claimed": 6,
+    "Unknown-attestation": 23
+  },
+  "limitations": [
+    "Phase A names evidence but does not prove signatures or attestations.",
+    "Phase B is a deterministic subset; verified percentages are not whole-sample estimates.",
+    "Pinned is theoretical eligibility only; R-005 does not observe a quarantine period or mutation response.",
+    "Unknown-attestation is not ranked for regression because a missing API digest prevents the attestation query."
+  ],
+  "phase_b_fully_verified_repository_count": 20,
+  "phase_b_repository_count": 20,
+  "protocol_status": "PASS",
+  "repository_count": 100,
+  "source_types": [
+    "deb-get",
+    "github-search"
+  ],
+  "transition_counts": {
+    "improvement": 6,
+    "stable": 121,
+    "unknown": 64
+  },
+  "verified_counts": {
+    "Attested": 1,
+    "Checksums-only": 1,
+    "Nothing-observed": 15,
+    "Strict": 3
+  },
+  "verified_subset_coverage": {
+    "denominator_repositories": 20,
+    "strict_plus_attested": {
+      "percent": 20.0,
+      "repositories": 4
+    },
+    "strict_plus_attested_plus_signed": {
+      "percent": 20.0,
+      "repositories": 4
+    },
+    "with_pinned_theoretical_eligibility": {
+      "percent": 100.0,
+      "qualification": "eligibility only; quarantine behavior was not measured by R-005",
+      "repositories": 20
+    }
+  }
+}

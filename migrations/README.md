@@ -5,21 +5,32 @@ up the database before applying a new migration and restore that backup if an
 upgrade cannot complete. Down migrations are deliberately unsupported because
 destructive schema reversal cannot generally preserve evidence and audit data.
 
-Each migration is safe to re-run after an interrupted attempt. Application
+The state owner (`src/state`) applies them in order from `PRAGMA user_version` and refuses a database written by a newer build. Each migration is safe to re-run after an interrupted attempt. Application
 code must enable `PRAGMA foreign_keys = ON` on every connection; the migration
 files also enable it for the connection that applies them. Large package bytes
 never belong in SQLite and remain in the content-addressed file store described
 by ADR-013.
 
-The initial migration uses SQLite `STRICT` tables and therefore requires SQLite
-3.37.0 or newer. ADR-017 selects `rusqlite` with the distribution SQLite
-library; the supported Linux package matrix is still decided by R-001 through
-R-004 and the release gate.
+Migrations target the distribution SQLite library, version 3.34.1 or newer
+(ADR-020, which supersedes point 2 of ADR-017). Tables are not `STRICT`:
+every column instead starts with a `CHECK (typeof(...))` constraint for its
+declared type, and nullable columns also accept `'null'`. A migration must not
+use SQLite features newer than 3.34.1, such as `RETURNING`, `DROP COLUMN`,
+`STRICT`, `unixepoch()`, or `->>`. The supported Linux package matrix is
+still decided by R-001 through R-004 and the release gate.
 
 Integrity rules that protect trust live in the schema itself, not only in
 application code: repository identity, artifact identity and digest, and
 attached evidence are immutable; an artifact may reference only evidence for
 its own digest; evidence and decision records are append-only.
+
+The Pinned level (ADR-018) has no cryptographic evidence, so it is not a
+`trust_evidence` type. A Pinned artifact instead references a
+`release_approval`: the user's append-only approval of exactly its digest in
+exactly its release, recordable and attachable only while the source has
+`pinned_consent_at`. An artifact carries evidence or an approval, never both,
+and neither is replaced once attached. `forge_repository.trust_floor` is the
+ratchet: it only rises, from `pinned` to `attested` to `strict`.
 
 The prose in this file is covered by the documentation terms described in
 `LICENSING.md`; SQL and other code-like material use `MIT OR Apache-2.0`.

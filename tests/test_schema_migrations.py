@@ -70,18 +70,148 @@ def insert_artifact(
     sha256: str = ZERO_DIGEST,
     evidence_id: str | None = None,
     state: str = "discovered",
+    approval_id: str | None = None,
+    release_id: str = "release-1",
 ) -> None:
     connection.execute(
         """
         INSERT INTO artifact(
             id, source_id, release_id, asset_id, family_id, ecosystem,
             native_name, native_version, architecture, filename, sha256,
-            byte_size, evidence_id, state
-        ) VALUES (?, 'source-1', 'release-1', ?, 'family-1', 'deb', 'example',
-                  '1.0.0', 'amd64', 'example_1.0.0_amd64.deb', ?, 1, ?, ?)
+            byte_size, evidence_id, approval_id, state
+        ) VALUES (?, 'source-1', ?, ?, 'family-1', 'deb', 'example',
+                  '1.0.0', 'amd64', 'example_1.0.0_amd64.deb', ?, 1, ?, ?, ?)
         """,
-        (artifact_id, f"asset-{artifact_id}", sha256, evidence_id, state),
+        (
+            artifact_id,
+            release_id,
+            f"asset-{artifact_id}",
+            sha256,
+            evidence_id,
+            approval_id,
+            state,
+        ),
     )
+
+
+def set_pinned_consent(
+    connection: sqlite3.Connection, granted: bool, source_id: str = "source-1"
+) -> None:
+    connection.execute(
+        "UPDATE forge_repository SET pinned_consent_at = ? WHERE id = ?",
+        ("2026-10-20T00:00:00Z" if granted else None, source_id),
+    )
+
+
+def insert_release_approval(
+    connection: sqlite3.Connection,
+    *,
+    approval_id: str = "approval-1",
+    source_id: str = "source-1",
+    release_id: str = "release-1",
+    sha256: str = ZERO_DIGEST,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO release_approval(
+            id, source_id, release_id, subject_sha256, approved_at, record_json
+        ) VALUES (?, ?, ?, ?, '2026-10-20T00:00:00Z', '{}')
+        """,
+        (approval_id, source_id, release_id, sha256),
+    )
+
+
+def insert_row_in_every_table(connection: sqlite3.Connection) -> None:
+    """One valid row per table, with NULL in every nullable column."""
+    insert_artifact_prerequisites(connection)
+    insert_artifact(connection)
+    # An approval needs consent when it is recorded; revoking the consent
+    # afterwards keeps the approval and leaves the column NULL.
+    set_pinned_consent(connection, True)
+    insert_release_approval(connection)
+    set_pinned_consent(connection, False)
+    connection.executescript(
+        f"""
+        INSERT INTO repository_previous_address(source_id, canonical_url, observed_at)
+        VALUES ('source-1', 'https://example.invalid/old', '2026-10-18T00:00:00Z');
+        INSERT INTO source_policy(
+            id, source_id, family_id, ecosystem, native_name, allowed_channel,
+            accepted_trust_modes_json, restrictions_json, updated_at
+        ) VALUES (
+            'policy-1', 'source-1', 'family-1', 'deb', 'example', 'stable',
+            '[]', '{{}}', '2026-10-18T00:00:00Z'
+        );
+        INSERT INTO installed_observation(
+            id, ecosystem, native_name, native_version, architecture,
+            confidence, observed_at, manager_record_json
+        ) VALUES (
+            'observation-1', 'deb', 'example', '1.0.0', 'amd64',
+            'unknown', '2026-10-18T00:00:00Z', '{{}}'
+        );
+        INSERT INTO os_inventory(
+            id, distro_id, distro_version, manager, manager_version,
+            architecture, enabled_repositories_json, installed_packages_json,
+            priorities_json, observed_at
+        ) VALUES (
+            'inventory-1', 'debian', '12', 'apt', '2.6.1',
+            'amd64', '[]', '[]', '{{}}', '2026-10-18T00:00:00Z'
+        );
+        INSERT INTO artifact_cache(sha256, bytes_path)
+        VALUES ('{ZERO_DIGEST}', 'objects/{ZERO_DIGEST}');
+        INSERT INTO snapshot(
+            id, generation, source_id, native_backend, manifests_json,
+            manifest_sha256, valid_from, valid_until
+        ) VALUES (
+            'snapshot-1', 1, 'source-1', 'apt', '[]',
+            '{OTHER_DIGEST}', '2026-10-18T00:00:00Z', '2026-10-25T00:00:00Z'
+        );
+        INSERT INTO snapshot_artifact(snapshot_id, artifact_id, sha256)
+        VALUES ('snapshot-1', 'artifact-1', '{ZERO_DIGEST}');
+        INSERT INTO decision_log(
+            event_id, object_type, object_id, rule_id, rule_version,
+            outcome, reason_code, reason_text, evidence_json, created_at
+        ) VALUES (
+            'decision-1', 'source', 'source-1', 'identity', 1,
+            'hold', 'E_REPO_ID_CHANGED', 'repository mismatch', '{{}}',
+            '2026-10-18T00:00:00Z'
+        );
+        INSERT INTO admin_operation(
+            id, desired_state_json, previous_hashes_json, staged_files_json,
+            created_at, updated_at
+        ) VALUES (
+            'operation-1', '{{}}', '{{}}', '[]',
+            '2026-10-18T00:00:00Z', '2026-10-18T00:00:00Z'
+        );
+        """
+    )
+
+
+def table_names(connection: sqlite3.Connection) -> list[str]:
+    return [
+        row[0]
+        for row in connection.execute(
+            "SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name"
+        )
+    ]
+
+
+def table_columns(
+    connection: sqlite3.Connection, table: str
+) -> list[tuple[str, str, bool, int]]:
+    """(name, declared type, NOT NULL, primary-key position) per column."""
+    return [
+        (row[1], row[2].upper(), bool(row[3]), row[5])
+        for row in connection.execute(f'PRAGMA table_info("{table}")')
+    ]
+
+
+# Values that a STRICT column of the declared type also rejects. A lossless
+# value (5 into TEXT, '5' into INTEGER) is converted by column affinity before
+# the CHECK runs, exactly as in a STRICT table.
+WRONG_TYPED_VALUES = {
+    "TEXT": (b"\x00",),
+    "INTEGER": ("not-an-integer", 1.5, b"\x00"),
+}
 
 
 class InitialMigrationTests(unittest.TestCase):
@@ -97,6 +227,7 @@ class InitialMigrationTests(unittest.TestCase):
             "os_inventory",
             "package_family",
             "package_identity",
+            "release_approval",
             "release_record",
             "repository_previous_address",
             "schema_migrations",
@@ -244,7 +375,12 @@ class InitialMigrationTests(unittest.TestCase):
             for row in connection.execute(f'PRAGMA table_info("{table[0]}")')
         }
 
+        trust_floor, pinned_consent = connection.execute(
+            "SELECT trust_floor, pinned_consent_at FROM forge_repository WHERE id = 'source-1'"
+        ).fetchone()
+
         self.assertEqual("registered", source_state)
+        self.assertEqual((None, None), (trust_floor, pinned_consent))
         self.assertEqual(0, family_approved)
         self.assertEqual(("observing", 0), (policy_mode, policy_approved))
         self.assertNotIn("trusted", column_names)
@@ -400,6 +536,327 @@ class InitialMigrationTests(unittest.TestCase):
                 "SELECT sha256, state FROM artifact WHERE id = 'artifact-1'"
             ).fetchone(),
         )
+
+    def test_every_column_rejects_a_wrong_storage_type(self) -> None:
+        connection = migrated_database()
+        insert_row_in_every_table(connection)
+
+        checked_tables = set()
+        for table in table_names(connection):
+            columns = table_columns(connection, table)
+            column_list = ", ".join(f'"{name}"' for name, _, _, _ in columns)
+            primary_key = [name for name, _, _, position in columns if position]
+            for column, declared_type, _, _ in columns:
+                self.assertIn(declared_type, WRONG_TYPED_VALUES, f"{table}.{column}")
+                # An INTEGER PRIMARY KEY is the rowid; SQLite itself refuses
+                # any non-integer value before the CHECK runs.
+                expected = (
+                    "datatype mismatch"
+                    if primary_key == [column] and declared_type == "INTEGER"
+                    else rf"CHECK constraint failed: typeof\({column}\)"
+                )
+                # Copy an existing valid row and replace one column, so the
+                # type check is the only constraint that can fail first.
+                select_list = ", ".join(
+                    "?" if name == column else f'"{name}"' for name, _, _, _ in columns
+                )
+                statement = (
+                    f'INSERT INTO "{table}"({column_list}) '
+                    f'SELECT {select_list} FROM "{table}" LIMIT 1'
+                )
+                for value in WRONG_TYPED_VALUES[declared_type]:
+                    with self.assertRaisesRegex(
+                        sqlite3.IntegrityError,
+                        expected,
+                        msg=f"{table}.{column} = {value!r}",
+                    ):
+                        connection.execute(statement, (value,))
+            checked_tables.add(table)
+
+        self.assertEqual(17, len(checked_tables))
+
+    def test_nullable_columns_accept_null(self) -> None:
+        connection = migrated_database()
+        insert_row_in_every_table(connection)
+
+        nullable_columns = []
+        for table in table_names(connection):
+            self.assertEqual(
+                1,
+                connection.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0],
+                table,
+            )
+            for column, _, not_null, position in table_columns(connection, table):
+                if not not_null and not position:
+                    nullable_columns.append(f"{table}.{column}")
+                    self.assertIsNone(
+                        connection.execute(
+                            f'SELECT "{column}" FROM "{table}"'
+                        ).fetchone()[0],
+                        f"{table}.{column}",
+                    )
+
+        self.assertEqual(
+            [
+                "artifact.evidence_id",
+                "artifact.approval_id",
+                "forge_repository.last_verified_at",
+                "forge_repository.trust_floor",
+                "forge_repository.pinned_consent_at",
+                "installed_observation.reported_repository",
+                "release_record.commit_sha",
+                "snapshot.signature_sha256",
+                "source_policy.selected_native_source",
+            ],
+            nullable_columns,
+        )
+
+    def test_lossless_values_are_stored_in_the_declared_type(self) -> None:
+        connection = migrated_database()
+        connection.execute(
+            """
+            INSERT INTO forge_repository(
+                id, forge, repository_id, owner_id, canonical_url, first_seen_at
+            ) VALUES ('source-1', 'github', ?, 'owner-1', 'https://example.invalid/repository', '2026-10-18T00:00:00Z')
+            """,
+            (1001,),
+        )
+        connection.execute(
+            """
+            INSERT INTO package_family(id, source_id, name, purpose, revision)
+            VALUES ('family-1', 'source-1', 'example', 'test', ?)
+            """,
+            ("2",),
+        )
+
+        self.assertEqual(
+            ("1001", "text"),
+            connection.execute(
+                "SELECT repository_id, typeof(repository_id) FROM forge_repository"
+            ).fetchone(),
+        )
+        self.assertEqual(
+            (2, "integer"),
+            connection.execute(
+                "SELECT revision, typeof(revision) FROM package_family"
+            ).fetchone(),
+        )
+
+
+class PinnedLevelTests(unittest.TestCase):
+    """The Pinned level of ADR-018: consent, approval, and the ratchet."""
+
+    def setUp(self) -> None:
+        self.connection = migrated_database()
+        insert_artifact_prerequisites(self.connection)
+        self.connection.execute(
+            """
+            INSERT INTO release_record(
+                id, source_id, forge_release_id, tag, published_at, channel
+            ) VALUES ('release-2', 'source-1', '20', 'v2.0.0', '2026-10-19T00:00:00Z', 'stable')
+            """
+        )
+
+    def artifact_row(self, artifact_id: str = "artifact-1") -> tuple:
+        return self.connection.execute(
+            "SELECT evidence_id, approval_id, state FROM artifact WHERE id = ?",
+            (artifact_id,),
+        ).fetchone()
+
+    def test_pinned_is_not_a_kind_of_cryptographic_evidence(self) -> None:
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "evidence_type IN"):
+            self.connection.execute(
+                """
+                INSERT INTO trust_evidence(
+                    id, source_id, evidence_type, root_chain_json,
+                    signer_identity, repository_id, subject_sha256,
+                    predicate_type, verified_at, verifier_version, record_json
+                ) VALUES (
+                    'evidence-2', 'source-1', 'pinned', '[]', 'none', '1001',
+                    ?, 'none', '2026-10-20T00:00:00Z', '0.0.0', '{}'
+                )
+                """,
+                (OTHER_DIGEST,),
+            )
+
+    def test_approval_requires_consent_and_is_append_only(self) -> None:
+        with self.assertRaisesRegex(
+            sqlite3.IntegrityError, "pinned level requires consent"
+        ):
+            insert_release_approval(self.connection)
+
+        set_pinned_consent(self.connection, True)
+        insert_release_approval(self.connection)
+        for statement in (
+            f"UPDATE release_approval SET subject_sha256 = '{OTHER_DIGEST}' WHERE id = 'approval-1'",
+            "UPDATE release_approval SET release_id = 'release-2' WHERE id = 'approval-1'",
+            "DELETE FROM release_approval WHERE id = 'approval-1'",
+        ):
+            with self.assertRaisesRegex(
+                sqlite3.IntegrityError, "release approval is append-only", msg=statement
+            ):
+                self.connection.execute(statement)
+
+        set_pinned_consent(self.connection, False)
+        with self.assertRaisesRegex(
+            sqlite3.IntegrityError, "pinned level requires consent"
+        ):
+            insert_release_approval(self.connection, approval_id="approval-2")
+        self.assertEqual(
+            1,
+            self.connection.execute(
+                "SELECT COUNT(*) FROM release_approval"
+            ).fetchone()[0],
+        )
+
+    def test_approved_artifact_is_admitted_through_every_serving_state(self) -> None:
+        set_pinned_consent(self.connection, True)
+        insert_release_approval(self.connection)
+
+        insert_artifact(self.connection, state="held")
+        self.connection.execute(
+            "UPDATE artifact SET approval_id = 'approval-1', state = 'verified' "
+            "WHERE id = 'artifact-1'"
+        )
+        for state in ("eligible", "published", "retired"):
+            self.connection.execute(
+                "UPDATE artifact SET state = ? WHERE id = 'artifact-1'", (state,)
+            )
+        self.assertEqual((None, "approval-1", "retired"), self.artifact_row())
+
+    def test_approval_covers_only_its_own_bytes_release_and_source(self) -> None:
+        insert_source(self.connection, source_id="source-2", repository_id="2002")
+        self.connection.execute(
+            """
+            INSERT INTO release_record(
+                id, source_id, forge_release_id, tag, published_at, channel
+            ) VALUES ('release-3', 'source-2', '30', 'v1.0.0', '2026-10-19T00:00:00Z', 'stable')
+            """
+        )
+        set_pinned_consent(self.connection, True)
+        set_pinned_consent(self.connection, True, source_id="source-2")
+        insert_release_approval(self.connection)
+        insert_release_approval(
+            self.connection,
+            approval_id="approval-other-source",
+            source_id="source-2",
+            release_id="release-3",
+        )
+
+        cases = (
+            # Same release, other bytes (a new asset uploaded after approval).
+            {"artifact_id": "artifact-2", "sha256": OTHER_DIGEST, "approval_id": "approval-1"},
+            # Same bytes in another release of the same source.
+            {"artifact_id": "artifact-3", "release_id": "release-2", "approval_id": "approval-1"},
+            # Same bytes approved for another source.
+            {"artifact_id": "artifact-4", "approval_id": "approval-other-source"},
+            # An approval that does not exist.
+            {"artifact_id": "artifact-5", "approval_id": "approval-missing"},
+        )
+        for case in cases:
+            with self.assertRaises(sqlite3.IntegrityError, msg=case):
+                insert_artifact(self.connection, state="verified", **case)
+            with self.assertRaises(sqlite3.IntegrityError, msg=case):
+                insert_artifact(self.connection, state="held", **case)
+
+        self.assertEqual(
+            0, self.connection.execute("SELECT COUNT(*) FROM artifact").fetchone()[0]
+        )
+
+    def test_pinned_cannot_bypass_evidence_invariants(self) -> None:
+        set_pinned_consent(self.connection, True)
+        insert_release_approval(self.connection)
+
+        # Never both evidence and an approval.
+        with self.assertRaises(sqlite3.IntegrityError):
+            insert_artifact(
+                self.connection,
+                evidence_id="evidence-1",
+                approval_id="approval-1",
+                state="verified",
+            )
+
+        # An attested artifact cannot gain an approval.
+        insert_artifact(self.connection, evidence_id="evidence-1", state="verified")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.connection.execute(
+                "UPDATE artifact SET approval_id = 'approval-1' WHERE id = 'artifact-1'"
+            )
+
+        # A pinned artifact cannot drop, replace, or trade its approval.
+        insert_release_approval(self.connection, approval_id="approval-2")
+        insert_artifact(
+            self.connection,
+            artifact_id="artifact-2",
+            approval_id="approval-1",
+            state="verified",
+        )
+        for statement in (
+            "UPDATE artifact SET approval_id = NULL, state = 'candidate' WHERE id = 'artifact-2'",
+            "UPDATE artifact SET approval_id = 'approval-2' WHERE id = 'artifact-2'",
+            "UPDATE artifact SET approval_id = NULL, evidence_id = 'evidence-1' WHERE id = 'artifact-2'",
+            "UPDATE artifact SET evidence_id = 'evidence-1' WHERE id = 'artifact-2'",
+        ):
+            with self.assertRaises(sqlite3.IntegrityError, msg=statement):
+                self.connection.execute(statement)
+        self.assertEqual((None, "approval-1", "verified"), self.artifact_row("artifact-2"))
+
+    def test_revoked_consent_blocks_attaching_an_earlier_approval(self) -> None:
+        set_pinned_consent(self.connection, True)
+        insert_release_approval(self.connection)
+        insert_artifact(self.connection, state="held")
+        set_pinned_consent(self.connection, False)
+
+        for statement in (
+            "UPDATE artifact SET approval_id = 'approval-1', state = 'verified' WHERE id = 'artifact-1'",
+            "UPDATE artifact SET approval_id = 'approval-1' WHERE id = 'artifact-1'",
+        ):
+            with self.assertRaisesRegex(
+                sqlite3.IntegrityError, "pinned level requires consent", msg=statement
+            ):
+                self.connection.execute(statement)
+        with self.assertRaisesRegex(
+            sqlite3.IntegrityError, "pinned level requires consent"
+        ):
+            insert_artifact(
+                self.connection,
+                artifact_id="artifact-2",
+                approval_id="approval-1",
+                state="verified",
+            )
+        self.assertEqual((None, None, "held"), self.artifact_row())
+
+    def test_trust_floor_only_rises(self) -> None:
+        def floor() -> str | None:
+            return self.connection.execute(
+                "SELECT trust_floor FROM forge_repository WHERE id = 'source-1'"
+            ).fetchone()[0]
+
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "trust_floor IN"):
+            self.connection.execute(
+                "UPDATE forge_repository SET trust_floor = 'signed' WHERE id = 'source-1'"
+            )
+
+        for level in ("pinned", "pinned", "attested", "strict"):
+            self.connection.execute(
+                "UPDATE forge_repository SET trust_floor = ? WHERE id = 'source-1'",
+                (level,),
+            )
+            self.assertEqual(level, floor())
+
+        for level in ("attested", "pinned", None, "unknown"):
+            with self.assertRaises(sqlite3.IntegrityError, msg=level):
+                self.connection.execute(
+                    "UPDATE forge_repository SET trust_floor = ? WHERE id = 'source-1'",
+                    (level,),
+                )
+        self.assertEqual("strict", floor())
+
+        # Consent does not touch the floor, and the floor does not need it.
+        set_pinned_consent(self.connection, True)
+        set_pinned_consent(self.connection, False)
+        self.assertEqual("strict", floor())
+
 
 if __name__ == "__main__":
     unittest.main()

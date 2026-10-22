@@ -1,0 +1,62 @@
+{
+  "alma10": {
+    "config_digest": "sha256:5b76c834f89d3e2400286c8e88e98281c04ce61cc469796e7146af4efa0787b1",
+    "config_size": 610,
+    "created": "2026-10-02T18:16:42.109783467Z",
+    "index_digest": "sha256:838c2fafefb1a8a0d7f8cdbc3b0551c2a2b1eb0cd87aad6d62aecadb18311f1b",
+    "layer_digest": "sha256:aa40d510fc6e470a2f5bd27e447ebfe9df24b41b10a52ccfb13fe5a7e461a36d",
+    "layer_size": 68879554,
+    "manifest_digest": "sha256:ba31c3299856068f77bc10574cad51b0a4f6a3dafb882668656e1639bee63db6",
+    "reference": "library/almalinux:10"
+  },
+  "alma9": {
+    "config_digest": "sha256:8d6c7e5a808dbbdb1c6060c23266569f565a91bf6abb639c7cb38e06ff8e51d1",
+    "config_size": 609,
+    "created": "2026-10-02T18:17:32.409721641Z",
+    "index_digest": "sha256:9819dc675b67b595c2b59e42be7763fca1a8bb217fa5944e04daa22e9a64db16",
+    "layer_digest": "sha256:b4183c2cefd40a42ed0c4d6f7f801f2e88f3ea816f1071a662f35ae7f810507b",
+    "layer_size": 71704075,
+    "manifest_digest": "sha256:dc973f4dffd28a1e6ae4d1662086d83bac34cd26f3b701e7ba51f4dcb300c80d",
+    "reference": "library/almalinux:9"
+  },
+  "debian12": {
+    "config_digest": "sha256:94926f0fd968cd68ac486502185a5dd78687874a9ec7727f64fe2af696e28311",
+    "config_size": 453,
+    "created": "2026-10-05T00:00:00Z",
+    "index_digest": "sha256:2c037a04925515fdd6ea85ea14a682d0e79931f5e9f5d07b6dbfc6ba12f9e858",
+    "layer_digest": "sha256:8cb71386cfcfc55b27b559f73c6d5c0cdcb93b83be8281314116e271cc42cea6",
+    "layer_size": 48518022,
+    "manifest_digest": "sha256:bc49dc1918ee1a47a93e65b5e4676e8680fb754b133197b92ca52bfe6731d5f0",
+    "reference": "library/debian:12"
+  },
+  "debian13": {
+    "config_digest": "sha256:99339bdd341ab316eeae3dcf870b98bc7243d99269d01666b0f49a565c1399da",
+    "config_size": 451,
+    "created": "2026-10-05T00:00:00Z",
+    "index_digest": "sha256:913f6706df59a68922d1dd08f78c2476560a8d367897200a6005b00e5f67c2d5",
+    "layer_digest": "sha256:4846f29007305297af653c57bf9b60ba8f676a38695c68d98460063442581671",
+    "layer_size": 49393200,
+    "manifest_digest": "sha256:bcf83fd8af414eda0c0a99d25a4e61dedd88e7aac7f7bc519d04555ff0c40ec5",
+    "reference": "library/debian:13"
+  },
+  "fedora44": {
+    "config_digest": "sha256:ccb55df1d2413428166d80b08aa37a4bdcb61a63d09fff6f8abc0d561f311053",
+    "config_size": 1053,
+    "created": "2026-08-26T18:36:01.077156536Z",
+    "index_digest": "sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80",
+    "layer_digest": "sha256:59259e167f1330a2378d204c639ab48759f9d49f292cf10905abc5ac474bc6c4",
+    "layer_size": 69396734,
+    "manifest_digest": "sha256:be9d65e2344d805cc11114319c685ecaa96b6d9b4350a0a6460cdb931babbd19",
+    "reference": "library/fedora:44"
+  },
+  "ubuntu2404": {
+    "config_digest": "sha256:6277ab668b2ad3c3ab851d370faa1690d324b30db29d342527f61fed28f20f36",
+    "config_size": 2052,
+    "created": "2026-10-02T08:10:55.064306818Z",
+    "index_digest": "sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac",
+    "layer_digest": "sha256:f2b4ef06ff01a67d4bed7657a4ae379a7d07934b7c3e743454a22a0d5275fb2b",
+    "layer_size": 29765758,
+    "manifest_digest": "sha256:a2d43bffc46670d7108bb3c0468c67c5557c4c92e83e1e34cbff1322ad1b94dc",
+    "reference": "library/ubuntu:24.04"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "authenticated": true,
+  "candidate_count": 100,
+  "deb_get_commit": "8fa6a694e2733f73ff4ec9cba8c12b0632b48ff8",
+  "exclusion_count": 31,
+  "phase_b_sample_count": 20,
+  "release_row_count": 291,
+  "search_queries": [
+    "topic:linux stars:>=100 archived:false fork:false",
+    "topic:cli stars:>=100 archived:false fork:false",
+    "topic:desktop stars:>=100 archived:false fork:false"
+  ],
+  "selected_at": "2026-10-20T07:45:32+00:00",
+  "source_counts": {
+    "deb-get": 96,
+    "github-search": 20
+  }
+}

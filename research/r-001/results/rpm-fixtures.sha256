@@ -1,0 +1,9 @@
+658f678c525f7e416ea51a5e6000abee0ec14759f69d0d4e594bcf18adb48481  ./sampleapp-0.9/sampleapp-0.9-1.noarch.rpm
+8b594f76346b09cbe0f332d30768b0c3f108f2f060dd49f918fabf2c27098303  ./sampleapp-1.0-A/sampleapp-1.0-1.noarch.rpm
+470e92cbc245339f7e96d173efe8a72d3e19507cefd95f0e2df8037eaef137b2  ./sampleapp-1.0-B/sampleapp-1.0-1.noarch.rpm
+64a5ef85ffe659686f869d1b5a574ffb4b97d6434915c7674009f8313e2c51cb  ./sampleapp-1.0-S/sampleapp-1.0-1.noarch.rpm
+99854a6efa80e5b262a1e6b6c1f0486dd01b63e640b037d13686319ef44c46c3  ./sampleapp-1.1/sampleapp-1.1-1.noarch.rpm
+18985d0863671b6870eec19612e5ec88beb8cfc3f0bf397ef7242f5faa06bb33  ./sampleapp-glibc/sampleapp-glibc-1.0-1.noarch.rpm
+b369ec4c759cd397641a80a473c7e14c18503e6dea8e54f8ac125994223e36bf  ./sampleapp-helper-1.1/sampleapp-helper-1.1-1.noarch.rpm
+475162f76d38bcd63c0829826aed97cfe8a35f5b528f2484b49f2d7695a504c6  ./sampleapp-missingdep/sampleapp-missingdep-1.0-1.noarch.rpm
+d03cb3a1d13f280898846f5b1ce85e6b635f3ec607038699ed033ab68b7cb291  ./sampleapp-nextglibc/sampleapp-nextglibc-1.0-1.noarch.rpm

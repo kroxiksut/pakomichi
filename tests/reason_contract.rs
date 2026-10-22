@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 use pakomichi::error::{
-    ObjectKind, ObjectReference, REASON_SCHEMA_VERSION, Reason, ReasonCode, ReasonEvent,
-    SafeIdentifier, SafeText, SafeValueError,
+    MAX_REASON_EVENT_JSON_BYTES, ObjectKind, ObjectReference, REASON_SCHEMA_VERSION, Reason,
+    ReasonCode, ReasonEvent, SafeIdentifier, SafeText, SafeValueError,
 };
 use serde_json::json;
 use std::path::Path;
@@ -61,9 +61,54 @@ fn every_documented_reason_code_has_a_stable_wire_value() {
         "E_FORGE_UNAVAILABLE",
         "E_ADMIN_APPLY_FAILED",
         "E_DISK_EXHAUSTED",
+        "E_ARTIFACT_MALFORMED",
+        "E_EVIDENCE_DOWNGRADE",
+        "E_RELEASE_APPROVAL_REQUIRED",
+        "E_EXECUTION_POLICY",
+        "E_SECURITY_CONTEXT",
+        "E_CHANNEL_UNCLEAR",
+        "E_SYSTEM_NAMESPACE_UNKNOWN",
     ];
 
     assert_eq!(expected, actual.as_slice());
+}
+
+#[test]
+fn every_reason_code_round_trips_and_renders_its_wire_value() {
+    for code in ReasonCode::ALL {
+        let reason = Reason::new(code, source_reference(), safe_message());
+        let event = ReasonEvent::new(reason.clone());
+        let round_trip = must_succeed(ReasonEvent::from_json(&must_succeed(event.to_json())));
+
+        assert_eq!(event, round_trip, "{code}");
+        assert_eq!(
+            must_succeed(serde_json::to_value(code)),
+            json!(code.as_str()),
+            "{code}"
+        );
+        assert!(
+            reason
+                .to_string()
+                .starts_with(&format!("[{}] source source-1234: ", code.as_str())),
+            "{code}"
+        );
+    }
+}
+
+#[test]
+fn unknown_reason_codes_are_rejected() {
+    let error = must_fail(ReasonEvent::from_json(
+        r#"{
+            "schema_version": 1,
+            "event": "reason",
+            "reason": {
+                "code": "E_KEY_CHANGED",
+                "object": {"kind": "source", "id": "source-1234"},
+                "message": "signing key changed"
+            }
+        }"#,
+    ));
+    assert!(error.to_string().contains("unknown variant"));
 }
 
 #[test]
@@ -233,4 +278,15 @@ fn unknown_schema_versions_and_fields_are_rejected() {
         }"#,
     ));
     assert!(field_error.to_string().contains("unknown field"));
+}
+
+#[test]
+fn oversized_input_is_rejected_before_parsing() {
+    // Valid JSON padded with whitespace past the limit: rejected by size,
+    // not by the parser.
+    let event = r#"{"schema_version":1,"event":"reason","reason":{"code":"E_SOURCE_STALE","object":{"kind":"source","id":"source-1234"},"message":"source metadata is stale"}}"#;
+    must_succeed(ReasonEvent::from_json(event));
+    let padded = format!("{event}{}", " ".repeat(MAX_REASON_EVENT_JSON_BYTES));
+    let error = must_fail(ReasonEvent::from_json(&padded));
+    assert!(error.to_string().contains("the limit is"));
 }

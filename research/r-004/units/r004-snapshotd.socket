@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# R-004 research unit (Accept=no: one service process owns the listener).
+
+[Unit]
+Description=Pakomichi R-004 snapshot reader socket
+
+[Socket]
+ListenStream=127.0.0.1:18080
+Accept=no
+NoDelay=true
+
+[Install]
+WantedBy=sockets.target

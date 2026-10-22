@@ -1,0 +1,9 @@
+778b3e20bdea7b597f2c93e290f4f627fcce5d9adcecedfbfbe55a894d896def  ./sampleapp-0.9/sampleapp_0.9-1_all.deb
+47869908d711fb7e42666f1ed7bfdbe77240c4b1a84f2e3d4465412dde9e5f67  ./sampleapp-1.0-A/sampleapp_1.0-1_all.deb
+a448e33bb91d8ef174d54451d4cd298672af02f3f8b32eaa315f9ff8d0b20b3e  ./sampleapp-1.0-B/sampleapp_1.0-1_all.deb
+a25f7296ae087129893ec361489be1eae4d03e0eeee40712e167f042d16ef4ee  ./sampleapp-1.0-S/sampleapp_1.0-1_all.deb
+f383c9b8511d71526b1cf0b2028ff1a39706c7f43a50ed2788e4d24926fdc9b1  ./sampleapp-1.1/sampleapp_1.1-1_all.deb
+aabc572bf8cc135b915d4db6d7737a6b3200c716646be385351f45e242aa9075  ./sampleapp-glibc/sampleapp-glibc_1.0-1_all.deb
+114889f88c763e4c09c6d7d8cd31e10d8b00bb0e4694cf0fb7b3c957676cf069  ./sampleapp-helper-1.1/sampleapp-helper_1.1-1_all.deb
+afe5148d1d4dcea92688efa2845e25687b230d42bb95e498d31752ce198417b2  ./sampleapp-missingdep/sampleapp-missingdep_1.0-1_all.deb
+c3acbaaaf946184d1213d7d8747f479c82b425c341ccfb18848b945a840014ce  ./sampleapp-nextglibc/sampleapp-nextglibc_1.0-1_all.deb

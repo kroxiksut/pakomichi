@@ -9,7 +9,16 @@ ignore = []
 version = 2
 allow = ["Apache-2.0", "MIT", "Unicode-3.0"]
 confidence-threshold = 0.8
-exceptions = []
+# Owner decision of 2026-10-20 (P2-001, option A): narrow per-crate
+# exceptions for the rustls TLS stack only, never additions to `allow`.
+# ring, rustls-webpki, and untrusted carry ISC; rustls depends on subtle
+# (BSD-3-Clause) unconditionally. Each entry names exactly one crate.
+exceptions = [
+    { name = "ring", allow = ["ISC"] },
+    { name = "rustls-webpki", allow = ["ISC"] },
+    { name = "untrusted", allow = ["ISC"] },
+    { name = "subtle", allow = ["BSD-3-Clause"] },
+]
 
 [bans]
 multiple-versions = "warn"

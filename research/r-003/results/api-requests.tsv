@@ -1,0 +1,17 @@
+time	method	url	status	ratelimit_remaining	ratelimit_resource
+2026-10-20T10:41:06+00:00	GET	https://api.github.com/rate_limit	200	60	core
+2026-10-20T10:41:06+00:00	GET	https://api.github.com/repos/matthart1983/netwatch	200	59	core
+2026-10-20T10:41:07+00:00	GET	https://api.github.com/repos/matthart1983/netwatch/releases/tags/v0.35.4	200	58	core
+2026-10-20T10:41:08+00:00	GET	https://api.github.com/repos/matthart1983/netwatch/git/ref/tags/v0.35.4	200	57	core
+2026-10-20T10:41:08+00:00	GET	https://api.github.com/repos/matthart1983/netwatch/git/tags/ba15ce3ba09d7d6fcd90034fad75b6ae6181add5	200	56	core
+2026-10-20T10:41:09+00:00	GET	https://api.github.com/repos/matthart1983/netwatch/attestations/sha1:9c249f576766a164108103cdd0da627a7f00229b?per_page=100	404	55	core
+2026-10-20T10:41:13+00:00	GET	https://api.github.com/repos/matthart1983/netwatch/attestations/sha256:e6cc5a2b9ced8388c33f3aae8fba905c0b73c31f1ed82385cb5e3f9a4021f8ca?per_page=100	200	54	core
+2026-10-20T10:41:17+00:00	GET	https://api.github.com/repos/matthart1983/netwatch/attestations/sha256:88bcc6730f2101320e9fc64d5eb7b7f8c5b9687c0ae923d13d395e2bf4f52068?per_page=100	200	53	core
+2026-10-20T10:41:21+00:00	GET	https://api.github.com/repos/matthart1983/netwatch/attestations/sha256:926a163946e069954afc288da4f86aeb01b4188db7f1b7cd9429f25711fd090e?per_page=100	200	52	core
+2026-10-20T10:41:24+00:00	GET	https://api.github.com/repos/matthart1983/netwatch/attestations/sha256:469b895f4ae3f466ed88b1e5a61df07cb822e12b818b2227a0e191579ea037c0?per_page=100	200	51	core
+2026-10-20T10:41:25+00:00	GET	https://api.github.com/repos/cli/cli	200	50	core
+2026-10-20T10:41:26+00:00	GET	https://api.github.com/repos/cli/cli/releases/tags/v2.95.0	200	49	core
+2026-10-20T10:41:27+00:00	GET	https://api.github.com/repos/cli/cli/git/ref/tags/v2.95.0	200	48	core
+2026-10-20T10:41:27+00:00	GET	https://api.github.com/repos/cli/cli/attestations/sha1:70bb306bd25eb407f90eabefd98824aed62cf519?per_page=100	200	47	core
+2026-10-20T10:41:35+00:00	GET	https://api.github.com/repos/cli/cli/attestations/sha256:25d1e4729e8808c9ed3d613e96ebd3f3e44446f2d368c89d878a71a36ddb3d8c?per_page=100	200	46	core
+2026-10-20T10:41:37+00:00	GET	https://api.github.com/rate_limit	200	46	core

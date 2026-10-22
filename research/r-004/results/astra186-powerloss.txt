@@ -1,0 +1,13 @@
+# R-004 power loss, Astra Linux 1.8.6 VM in a dedicated snapshot (2026-10-20)
+installed: 6.12.77-1-generic; systemd 252 (252.39-1~deb12u1astra.se3+ci18); ext4   rw,relatime,errors=remount-ro
+cycle 1: load after 22s: active 82
+cycle 1: hard power-off (0)
+cycle 1: verify: acknowledged=82 last_ack=g82-1792484751757775365 current=g82-1792484751757775365 current_vs_last_ack=ok check_rc=0 problems_other_than_staging=0 staging_leftovers=0 acknowledged_missing=0 state_db=readable reconcile_rc=0 check_after_reconcile_rc=0 publish_errors=none
+cycle 2: load after 21s: active 124
+cycle 2: hard power-off (0)
+acknowledged=124 last_ack=g124-1792484890038074611 current=g124-1792484890038074611 current_vs_last_ack=ok check_rc=0 problems_other_than_staging=0 staging_leftovers=0 acknowledged_missing=0 state_db=readable reconcile_rc=0 check_after_reconcile_rc=0 publish_errors= 40 event=self-check references=0; 1 ;
+cycle 3: load after 28s: active 169
+cycle 3: hard power-off (0)
+acknowledged=169 last_ack=g169-1792485042030102129 current=g169-1792485042030102129 current_vs_last_ack=ok check_rc=0 problems_other_than_staging=0 staging_leftovers=0 acknowledged_missing=0 state_db=readable reconcile_rc=0 check_after_reconcile_rc=0 publish_errors= 83 event=self-check references=0; 1 event=self-check references=0; 1 ;
+restore pakomichi-r004-before (0)
+delete pakomichi-r004-before (0); VM state now saved

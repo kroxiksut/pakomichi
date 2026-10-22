@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# R-004 research server: generations, CAS, socket activation, lazy fetch.
+# Research tooling only, not production Pakomichi code. Builds offline from
+# the P0-004 dependency cache (see research/r-004/build.sh).
+
+[package]
+name = "pakomichi-r004-snapshotd"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.94.1"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace]
+resolver = "3"
+
+[dependencies]
+libc = "=0.2.191"
+listenfd = "=1.0.2"
+rusqlite = { version = "=0.40.2", default-features = false }
+sha2 = "=0.10.9"
+tokio = { version = "=1.53.3", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+
+[profile.release]
+debug = false
+strip = true
+
+[lints.rust]
+unsafe_code = "deny"
+unused_must_use = "deny"
+
+[lints.clippy]
+dbg_macro = "deny"
+unwrap_used = "deny"

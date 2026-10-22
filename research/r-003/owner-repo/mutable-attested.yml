@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# Template for the owner's R-003 test repository: copy to
+# `.github/workflows/mutable-attested.yml` there. Protocol step 2: a MUTABLE
+# release (repository release immutability disabled) whose asset carries an
+# artifact attestation from actions/attest-build-provenance.
+#
+# Before use, replace every `<PIN: ...>` with a full 40-character commit SHA
+# that the owner reviewed; the template is deliberately invalid until then.
+name: r003-mutable-attested
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: fixture version (MAJOR.MINOR.PATCH)
+        required: true
+
+permissions: {}
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@<PIN: actions/checkout full commit SHA>
+        with:
+          persist-credentials: false
+      - name: Build fixture
+        run: bash scripts/build-fixture.sh "${{ inputs.version }}" dist
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@<PIN: actions/attest-build-provenance full commit SHA>
+        with:
+          subject-path: dist/*.deb
+      - name: Publish mutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release create "v${VERSION}-mutable" dist/*.deb \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "R-003 mutable v${VERSION}" \
+            --notes "R-003 mutable release with artifact attestation"

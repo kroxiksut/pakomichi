@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# R-001 synthetic fixtures, shared by the DEB and RPM builders.
+# id|name|version|release|variant|publisher|depends|provides
+# depends/provides: "; "-separated "name [OP version]"; OP is =, >=, or <=.
+# @GLIBC@ becomes libc6 (DEB) or glibc (RPM). No package has scripts.
+sampleapp-0.9|sampleapp|0.9|1|v0.9|alpha||
+sampleapp-1.0-A|sampleapp|1.0|1|A|alpha||
+sampleapp-1.0-B|sampleapp|1.0|1|B|beta||
+sampleapp-1.0-S|sampleapp|1.0|1|S|system||
+sampleapp-1.1|sampleapp|1.1|1|v1.1|beta|sampleapp-helper = 1.1-1; pakomichi-test-virtual|
+sampleapp-helper-1.1|sampleapp-helper|1.1|1|helper|beta||pakomichi-test-virtual
+sampleapp-missingdep|sampleapp-missingdep|1.0|1|missingdep|alpha|pakomichi-test-unavailable-lib|
+sampleapp-glibc|sampleapp-glibc|1.0|1|glibc|alpha||@GLIBC@ = 99.0
+sampleapp-nextglibc|sampleapp-nextglibc|1.0|1|nextglibc|alpha|@GLIBC@ >= 2.99|

@@ -16,15 +16,20 @@
 | invalid attestation | active | suspended or exclusion of the specific release | Depending on the scope of the violation; do not erase confirmed history |
 | selected package is no longer available | active | observing/suspended package | Do not switch to a fork |
 | network temporarily unavailable | active | active + stale status | Use the last trusted snapshot only according to the freshness policy |
-| user removed the source | any | disabled/deleted | Applications remain installed |
+| maximum freshness reached (DNF) | active | active + `E_SOURCE_STALE` | Publish a signed empty generation; installed packages stay; a successful `sync` restores the offer (ADR-024) |
+| explicit Pinned consent | registered/observing | observing | Only `supplemental` may follow; every release still needs approval (ADR-027) |
+| closed software environment on (Astra Linux) | any | observing (activation refused) | Hold every artifact with `E_EXECUTION_POLICY` (ADR-025) |
+| user removed the source | any | disabled/deleted | Applications remain installed; the source's repository files are deleted |
 
 ## Version / artifact
 
-`discovered → candidate → verified → eligible → published → retired`. Branches: `held` (conflict/compatibility), `rejected` (trust/substitution), `revoked` (explicit block). `verified` ≠ `eligible`: the source file is genuine but may be incompatible.
+`discovered → candidate → verified → eligible → published → retired`. Branches: `held` (conflict/compatibility, evidence below the trust floor `E_EVIDENCE_DOWNGRADE`, a Pinned release awaiting approval `E_RELEASE_APPROVAL_REQUIRED`), `rejected` (trust/substitution), `revoked` (explicit block). `verified` ≠ `eligible`: the source file is genuine but may be incompatible. For a Pinned source, `verified` means that the administrator approved the exact digest, not that a cryptographic check passed.
+
+The trust floor of a source (`pinned` < `attested` < `strict`) only rises; lowering it is refused (ADR-027).
 
 ## Snapshots
 
-`building → signed → verified → staged → published → retired → collected`. `failed` from any state before published; a published snapshot is **not modified**. We keep old snapshots while requests exist or until the period of safe reference availability has expired.
+`building → signed → verified → staged → published → retired → collected`. `failed` from any state before published; a published snapshot is **not modified**. Generation IDs are monotonic and never reused, and `current` never moves back to an older generation. A retired generation stays reachable at least for the maximum freshness (DNF) or its `Valid-Until` (APT) plus a safety margin; collection is by reachability plus this window, never by generation count alone (ADR-024). RPM generations switch at most once per regular check interval, except on `sync --force` and for the empty generation after maximum freshness.
 
 ## Installed state
 

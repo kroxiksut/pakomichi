@@ -53,7 +53,7 @@ The GitHub API, release assets, DEB/RPM files, local IPC requests, and data from
 - The dependency direction follows `docs/en/architecture/overview.md` and the ADRs, not the convenience of the first prototype.
 - Prohibited transitive dependencies are checked against the resolved `cargo metadata` graph; searching `Cargo.toml` alone does not prove that a dependency is absent from the binary.
 - The network client and the inspector of third-party packages do not receive root or the local repository's private key.
-- The IPC, storage, and serialized-decision formats have an explicit version and a single normative type; `Debug`/`Display` are not used as a stable wire/storage format.
+- The IPC, storage, and serialized-decision formats have an explicit version and a single normative type; `Debug`/`Display` are not used as a stable wire/storage format. Serialization uses serde and serde_json under the field, version, and size rules of [ADR-019](../decisions/ADR-019.md).
 - The OS mechanism is separated from policy. An unconfirmed capability of a specific system is expressed as a capability/fallback, not as a fictitious generic implementation.
 
 ## Dependencies and licenses

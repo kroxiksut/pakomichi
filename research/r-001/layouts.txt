@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# R-001 repository layouts: layout|repo|fixture ids (space-separated).
+# A layout is published as one signed repository per listed repo.
+equal|alpha|sampleapp-1.0-A
+equal|beta|sampleapp-1.0-B
+versions|alpha|sampleapp-0.9
+versions|beta|sampleapp-1.0-B
+upgrade|alpha|sampleapp-1.0-A
+upgrade|beta|sampleapp-1.1 sampleapp-helper-1.1
+family|alpha|sampleapp-1.1 sampleapp-helper-1.1
+family-split|alpha|sampleapp-1.1
+family-split|beta|sampleapp-helper-1.1
+system|alpha|sampleapp-1.0-A
+system|system|sampleapp-1.0-S
+negative|alpha|sampleapp-missingdep sampleapp-glibc sampleapp-nextglibc
+negative-next|alpha|sampleapp-nextglibc

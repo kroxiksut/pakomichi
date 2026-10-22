@@ -1,0 +1,7 @@
+platform	tool	setting	value
+alma9	dnf config-manager --dump	gpgcheck	1
+alma9	dnf config-manager --dump	repo_gpgcheck	0
+alma9	dnf config-manager --dump	pkg_gpgcheck	unsupported
+alma9	dnf config-manager --dump	gpgcheck_policy	unsupported
+alma9	dnf config-manager --dump	localpkg_gpgcheck	0
+alma9	rpm --eval	%_pkgverify_level	digest

@@ -27,7 +27,7 @@ Pakomichi connects a **specific Git repository** that publishes ready-made `.deb
 2. **One Git repository may release several system packages** (for example, the main application, a CLI, a service, and a shared component), including from one CI workflow. Allowed package sets are recorded explicitly.
 3. **Do not deliver system libraries from unrelated Git projects.** APT/DNF resolves dependencies normally from existing OS sources; Pakomichi must not initiate a dangerous partial system migration.
 4. **Do not displace system repositories automatically.** Detect a conflict first, then ask the user to decide. Equal versions containing different bytes are not a safely resolved source switch.
-5. **Verify provenance and exact bytes.** Strict and Attested modes, repository binding, SHA-256 verification, and an immutable history of accepted artifacts are part of the design.
+5. **Verify provenance and exact bytes.** Strict and Attested modes, repository binding, SHA-256 verification, and an immutable history of accepted artifacts are part of the design. A source's provenance level never drops silently. A source without cryptographic provenance (Pinned) is allowed only after explicit consent for that source and manual approval of every release, and never displaces a distribution package.
 6. **Use signed local indexes, atomic snapshots, and immutable artifact URLs.** The system must not trust content merely because it is served from `localhost`.
 7. **Installed software remains after Pakomichi is removed.** Updates through the bridge stop, but applications are not removed.
 
@@ -70,13 +70,13 @@ sudo apt install netwatch
 3. [0.1 requirements and scope](docs/en/product/scope-0.1.md).
 4. [Architecture](docs/en/architecture/overview.md) and [data model](docs/en/architecture/data-model.md).
 5. [ADRs](docs/en/decisions/INDEX.md) — rationale for binding decisions.
-6. [Research tasks R-001…R-004](docs/en/research/INDEX.md) — blocking experiments.
+6. [Research tasks R-001…R-006](docs/en/research/INDEX.md) — blocking experiments and their reports.
 7. [Roadmap and release sequence](docs/en/roadmap.md).
 8. [Alpha release gate](docs/en/testing/release-gate.md).
 
 ## Project status
 
-The concept, Rust implementation language, and initial operational stack are agreed. Rust 1.94.1 is pinned under [ADR-015](docs/en/decisions/ADR-015.md); [ADR-017](docs/en/decisions/ADR-017.md) defines the bounded Tokio network runtime, synchronous/process isolation boundaries, and native packaging path backed by the [P0-004 prototype](docs/en/prototypes/P0-004-stack.md). The repository still does not implement product behavior. Package-manager behavior has **not been confirmed by R-001 through R-004**. Do not present the architecture as implemented. GitHub is the first adapter; GitLab, Forgejo, and Gitea come later. WinGet remains a research direction and does not block the Linux alpha. A GUI is not planned for 0.1.
+The concept, Rust implementation language, and initial operational stack are agreed. Rust 1.94.1 is pinned under [ADR-015](docs/en/decisions/ADR-015.md); [ADR-017](docs/en/decisions/ADR-017.md) defines the bounded Tokio network runtime, synchronous/process isolation boundaries, and native packaging path backed by the [P0-004 prototype](docs/en/prototypes/P0-004-stack.md). The repository still does not implement product behavior. Research R-001, R-002, R-004, R-005, and R-006 is complete and reflected in ADR-021 through ADR-027; R-003 (GitHub provenance) is complete only for its read-only part. No distribution is supported yet: ADR-026 lists the first targets and what each still needs. Do not present the architecture as implemented. GitHub is the first adapter; GitLab, Forgejo, and Gitea come later. WinGet remains a research direction and does not block the Linux alpha. A GUI is not planned for 0.1.
 
 ## Development
 

@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+//! The SQLite state database and its single owner (P2-012).
+//!
+//! ADR-013 keeps states and decisions in SQLite and package bytes in the
+//! CAS; ADR-017 point 2 and ADR-020 fix `rusqlite 0.40.2` over the
+//! distribution SQLite, version 3.34.1 or newer, without `STRICT` tables.
+//!
+//! - `floor`: the version floor and the SQL features newer than it; portable,
+//!   so the migrations are checked on every target.
+//! - `owner` (Unix only, as the product): [`StateOwner`] checks the runtime
+//!   library before opening anything, refuses a second owner, creates the
+//!   database with mode 0600, enforces foreign keys, runs in defensive mode
+//!   with an untrusted schema, applies the forward-only migrations, refuses
+//!   a database from a newer build, and backs up and restores through the
+//!   online backup API with the source validated first.
+//!
+//! The Windows development host has no system SQLite to link against, and
+//! ADR-020 forbids the bundled library, so the owner is built and tested on
+//! Linux.
+
+mod floor;
+#[cfg(unix)]
+mod owner;
+
+pub use floor::{
+    JSON_FUNCTION, MIN_SQLITE_VERSION, NEWER_THAN_FLOOR, format_version, newer_features,
+};
+#[cfg(unix)]
+pub use owner::{SCHEMA_VERSION, StateError, StateOwner, check_sqlite_version};

@@ -15,19 +15,75 @@ A loopback service with systemd socket activation (where supported). One process
 5. `fsync` the contents/directories, then atomically switch the active generation on the same FS.
 6. Keep old generations while requests and references are possible; garbage collection is by reachability, not by the age of a single file.
 
-For APT, enable `Acquire-By-Hash`; for RPM, keep `repomd.xml` and the associated metadata versions at unique URLs. Package file paths are immutable and content-addressed.
+Content-addressed indexes are mandatory (ADR-024, R-004 G3/G4): APT `Release` declares `Acquire-By-Hash: yes` and every index is served under its `by-hash` path; RPM `repodata` files have unique, digest-bearing names (never `--simple-md-filenames`); package file paths are immutable and content-addressed. Only `InRelease`, `Release`, `Release.gpg`, `repomd.xml`, `repomd.xml.asc`, and the plain compatibility index paths are mutable, and they are served only from the current generation.
+
+- **IDs and rollback:** generation IDs are monotonic and never reused; `current` never moves back to an older generation. DNF accepts a replay of older signed metadata and `repomd.xml` has no signed expiry, so this rule is enforced on the server.
+- **Retention:** a retired generation stays reachable at least for the maximum freshness (DNF) or the `Valid-Until` of its `InRelease` (APT), plus a safety margin. Collection is by reachability plus this window, never by generation count alone; the window is a configuration value tested against R-004 G4/G5.
+- **RPM switches:** the detached `repomd.xml.asc` and `repomd.xml` are separate mutable paths, so RPM generations switch at most once per regular check interval (6 h), except on `sync --force` and for the empty generation below. A metadata-signature failure in Pakomichi's own post-publication check right after a switch is retryable, not corruption.
+
+### Generation store
+
+The publisher (`src/publish`, P3-008) keeps generations as files under the publish root; the `snapshot` rows are derived from them.
+
+- **Layout:** `repos/<repo>/generations/<n>.manifest`, `repos/<repo>/current` (the number and a newline, replaced atomically), `ids/<source>.<backend>` (the last number allocated), `tmp/` for staging, and a `lock` file: one publisher at a time. Directories are 0750 and must not be writable by group or others; files are 0640 and are read without following symlinks.
+- **Manifest v1:** a fixed header (repository, source, backend, generation, creation time, validity) and one line per path with its SHA-256, size, and class. Every path is classified by the backend: mutable metadata (`InRelease`, `Release`, `Release.gpg`, plain indexes; `repomd.xml`, `repomd.xml.asc`) or content-addressed (`by-hash/SHA256/<digest>`, `pool/<digest>/*.deb`, `repodata/<digest>-*`, `packages/<digest>/*.rpm`), and a content-addressed name must carry the digest of its own bytes. Any other path is refused, and every APT plain index must have its `by-hash` alias in the same generation (R-004 G3/G4). Parsing is strict and re-serialises to the same text; `snapshot.manifest_sha256` is the digest of that text.
+- **Publication:** every object is first verified in the CAS; the number is allocated above both the recorded counter and every manifest of the repository and recorded durably before use, so a failure burns it. A content-addressed path must keep its bytes against every retained generation. The manifest is written once, then `current` is replaced; the reader sees the old or the new generation, never a mix (N-015). Numbers are shared by the logical repositories of one source and backend (one per provenance level, ADR-027), which keeps `(source, backend, generation)` unique in `snapshot`.
+- **Recovery:** opening the store empties `tmp/` and renames a manifest above `current` (written by a killed publisher, never made current) to `<n>.failed`; its number stays used.
+- **Serving rule:** `resolve` gives a mutable path only from the current generation and a content-addressed path from the current or a retained generation inside the window, newest first (G2, G5). Native-client runs of G2-G6 belong to the reader task (P3-005a).
+- **Retention and collection:** a generation retires when the next one becomes current, at the creation time of that next generation. GC roots are the current generation and the retired ones inside the window; `collect` removes the manifests of generations past the window and of failed ones, never the current one.
+- **Reconcile:** rebuilds `snapshot` rows from the manifests (current `published`, others `retired`, failed `failed`, rows without a manifest `collected`) and records the digest of `InRelease` or `repomd.xml.asc` as `signature_sha256`. `snapshot_artifact` rows belong to the index publishers.
+
+## Content-addressed store
+
+The store is the synchronous module `src/cas`, used by the single state-owner process (no Tokio). It keeps the bytes; SQLite records about the cache (`artifact_cache`) are derived from it and rebuilt by reconcile (ADR-013). The write protocol is the one confirmed by R-004 ([report](../research/R-004-report.md), conclusions 10 and 12). The store needs POSIX semantics and exists only on Unix.
+
+- **Layout:** `objects/<sha256>` (immutable, mode 0444), `staging/`, `quarantine/`, and a `lock` file. The `objects/` directory is 0750 so that the repository reader can read through its group; `staging/` and `quarantine/` are 0700. A store directory that is a symlink or writable by group or others is refused. Final users and groups follow the process model of ADR-009 and ADR-017.
+- **Write:** a staging file in the same filesystem (`O_CREAT|O_EXCL`, `O_NOFOLLOW`, mode 0600) is streamed while hashing, checked for size and SHA-256, `fsync`ed, made read-only, renamed to `objects/<sha256>`, and the directory is `fsync`ed. Any failure removes the staging file; leftovers of a killed process are removed when the store is opened. A pinned object is checked against its accepted digest and size, and reading stops at the first byte past the size. Generated files whose digest is not known in advance are named by the digest of the bytes written.
+- **One writer, one object:** opening the store takes an exclusive lock, so a second writer process is refused. Inside the process, work on one digest is serialised: concurrent requests produce one download and one object, a waiter that finds the object stored does not fetch, and a failed attempt is not shared with waiters. An existing object is reused only after a full re-hash.
+- **Corruption and unsafe entries:** a corrupt object, a symlink, or any other non-regular entry at an object name is moved to `quarantine/`, never silently deleted, and the next request stores a fresh copy. Reads open objects with `O_NOFOLLOW` and `O_NONBLOCK`, accept only a regular file of the expected size, and can verify the full digest first; R-004 measured that as 15–20% of large-file throughput and recommends it before serving. A periodic scrub re-hashes every object.
+- **Space:** the store has an optional quota and a per-object limit (2 GiB by default, the GitHub asset limit). Space is reserved before the first byte is written; when the size is unknown, it is charged while streaming. A quota failure, `ENOSPC`, or `EDQUOT` leaves no staging file and no object, and the stored objects stay intact.
+- **Garbage collection:** by reachability only. Roots are published generations, retired generations inside the retention window, and pins. In-process leases protect an object between storing it and recording its reference. An object is never collected because of its own age, and entries whose names are not digests are reported, not deleted. A reference count in SQLite is a derived value; collection recomputes reachability from the generation manifests.
+- **Reason codes:** digest, size, corruption, and unsafe-entry failures map to `E_CACHE_DIGEST_MISMATCH`; quota, per-object limit, and full-disk failures map to `E_DISK_EXHAUSTED`. Source read errors are classified by the caller (for example, `E_FORGE_UNAVAILABLE`).
+
+Generation manifests, the `current` pointer, and single-use generation IDs belong to the repository publishers, which pass their generations to garbage collection as roots.
+
+### Hash and system crates
+
+- `sha2 =0.10.9` (RustCrypto, `MIT OR Apache-2.0`) with default features off computes SHA-256. It is pure Rust with run-time CPU feature detection and no C library, and it is the crate that the P0-004 prototype and the R-004 research server used. `ring` and `aws-lc-rs` were not chosen for hashing: they add C and assembly builds, a much larger API than one hash, and licences outside the global `cargo deny` allow-list. `ring` later entered the network process as the rustls provider under a per-crate licence exception (P2-001, `architecture/overview.md`); the store still hashes with `sha2`, so the CAS does not depend on the TLS stack.
+- `libc =0.2.191` (`MIT OR Apache-2.0`), on Unix only, supplies the `O_NOFOLLOW`, `O_NONBLOCK`, `O_DIRECTORY`, `O_CLOEXEC`, and `ELOOP` constants; the module calls no `unsafe` function. The writer lock uses the standard library's `File::try_lock`.
 
 ## Lazy fetch
 
 If a package is not yet in CAS: obtain the **pinned asset** through the API/verified route, with limits on size, protocol, and DNS/redirects; recheck the address on every hop and exclude localhost/private/metadata endpoints; write to a temporary file; verify the hash and attestation against the accepted evidence; only then serve the bytes. If full buffering is impossible, do not stream unverified data as a finished trusted file.
 
-## Freshness (initial proposed settings)
+## Freshness
 
-Regular check: every 6 h; manual `sync --force`; staleness warning after 24 h; maximum freshness of 7 days after the last successful confirmed synchronization. A `304`/conditional response may confirm the absence of changes if it is verified according to the API/policy. **No validity extension on a network error.** `Valid-Until` must match the actually confirmed freshness. The settings are configurable; the values are to be verified by R-004.
+Regular check: every 6 h; manual `sync --force`; staleness warning after 24 h; maximum freshness of 7 days after the last successful confirmed synchronization. A `304`/conditional response may confirm the absence of changes if it is verified according to the API/policy. **No validity extension on a network error.** The settings are configurable; signing keys and `Valid-Until` are chosen so that the 24 h warning fires well before clients are blocked.
+
+- **APT:** `Valid-Until` equals the actually confirmed freshness; APT enforces it and ignores a replayed older `InRelease` (R-004 G7, G8).
+- **DNF (ADR-024 point 3):** when the last confirmed synchronization of a source is older than the maximum freshness, Pakomichi neither answers 503 nor keeps serving the stale generation: it publishes a new signed generation of that source's DNF repository that contains no packages. Installed packages stay installed; DNF keeps working for the rest of the system, because the Pakomichi repository stays available; the source's packages are not offered until a successful synchronization; `pchi doctor` and `pchi status` show `E_SOURCE_STALE`. The empty generation asserts only that nothing is currently offered, so it does not re-sign stale data as fresh (ADR-010).
+- Health and staleness are judged from Pakomichi's own state (last confirmed synchronization, age of the served generation, service and socket health), never from the exit status of `apt-get update` (ADR-022 point 6).
 
 ## Service failure
 
-We do not touch third-party system sources or installed applications. APT/DNF may receive an error from our source; do not hide the failure. If GitHub is unavailable, already stored packages may be available while the snapshot is valid. If the key/DB/index is corrupted, fail closed for our source.
+We do not touch third-party system sources or installed applications. APT/DNF may receive an error from our source; do not hide the failure. If GitHub is unavailable, already stored packages may be available while the snapshot is valid. If the key/DB/index is corrupted, fail closed for our source. Losing the signing key stops publication honestly; APT clients fail after `Valid-Until` (R-004 G9).
+
+- **APT:** an unreachable source or a 503 gives `apt-get update` exit 0 with a warning, and distribution sources keep working.
+- **DNF (ADR-021):** every Pakomichi repository sets `skip_if_unavailable=False`, so while it is unreachable, DNF metadata operations on the system fail, including the installation of distribution packages. This is the accepted fail-closed limit, in preference to a silent switch to another package instance; it is documented in the release notes and troubleshooting guide. Pakomichi never falls back to `True`, never disables its repositories, and never edits third-party repository files.
+- **Socket health:** a crash loop puts the socket into `failed` (`service-start-limit-hit`) and it stops listening. `pchi doctor` reports this as an outage of the Pakomichi repositories with the recovery command (`systemctl reset-failed` for the units, then starting the socket); `pchi doctor --repair` performs it only after explicit administrator confirmation.
+- **Robustness (ADR-024 point 5):** the reader never exits with an error status on recoverable conditions, so that it does not consume the systemd start limit. On `SIGTERM` it stops accepting, completes in-flight responses within a bounded deadline, and then exits; upgrades use this drain (R-004 S3 lost 10–13 of 20,000 requests on a plain restart). Slow clients get a request-header deadline shorter than 10 s and a limit that keeps one local client from occupying all connections (S8b).
+- **Port takeover:** while the socket is down any local user can bind the loopback port. Binding on a privileged port through systemd is to be tested (N-034) before the port is chosen.
+
+## State database
+
+The state database belongs to one process, the state owner (`src/state`, ADR-013, ADR-017 point 2, ADR-020). Nothing else opens it.
+
+- **Library:** `rusqlite =0.40.2` with default features off and only `backup`, linked to the distribution SQLite (no `bundled`, ADR-020). The owner reads `sqlite3_libversion_number()` before it touches any file and refuses to start below 3.34.1 with `E_PLATFORM_UNSUPPORTED` ("system SQLite X is older than the required 3.34.1"). The module exists only on Unix, as the product does; the Windows development host checks the portable part (the floor and the migration scan).
+- **One owner:** opening takes an exclusive lock on `<database>.lock`; a second owner is refused, never allowed to write concurrently.
+- **Files:** the directory must be a real directory not writable by group or others; the database must be a regular file, not a symlink, with no group or other permissions. A missing database is created with mode 0600 before SQLite opens it (`SQLITE_OPEN_NOFOLLOW`, no `CREATE` on the SQLite side); the WAL and shared-memory files inherit that mode.
+- **Connection:** `foreign_keys = ON` (checked), defensive mode on, schema content not trusted to call functions (`trusted_schema = OFF`), WAL with `synchronous = FULL`, a bounded busy timeout.
+- **Migrations:** the forward-only migrations of `migrations/` are compiled in and applied in order from `PRAGMA user_version`; a failed migration leaves no open transaction. A database with a newer `user_version`, or with migration records this build does not know, is refused. A test keeps every migration free of SQL newer than 3.34.1 (`RETURNING`, `DROP COLUMN`, `STRICT`, `unixepoch()`, `->`/`->>`, JSON functions, `octet_length()`).
+- **Backup and restore:** the online backup API copies every page in one step. A backup goes to a new file with mode 0600 and is validated (`integrity_check`, `foreign_key_check`, this build's schema), or removed. A restore source is opened read-only and never created, and is validated before any page is copied; on a failure before the copy the database is unchanged.
 
 ## Coordinating the DB and OS files
 
@@ -35,4 +91,4 @@ SQLite transaction + recording the intent in `AdminOperation` + staging of confi
 
 ## Removal
 
-We remove only Pakomichi-owned system config files and local keys/cache according to the removal mode; applications and third-party files remain. On a source purge, we leave no dangling repository files.
+We remove only Pakomichi-owned system config files and local keys/cache according to the removal mode; applications and third-party files remain. Uninstalling Pakomichi and removing a source delete the Pakomichi `.repo`/`.sources` files of that source: with `skip_if_unavailable=False`, a repository file left pointing at a removed service keeps DNF failing (R-004 T3a), while with the file removed DNF works and the installed application still runs (T3).

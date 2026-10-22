@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# R-004 research unit. Scenario-specific settings come from drop-ins in
+# /run/systemd/system/r004-snapshotd.service.d/ written by the harness.
+
+[Unit]
+Description=Pakomichi R-004 snapshot reader
+Requires=r004-snapshotd.socket
+After=r004-snapshotd.socket
+
+[Service]
+Type=exec
+ExecStart=/usr/local/bin/r004-snapshotd serve
+Environment=R004_ROOT=/var/lib/pakomichi-r004
+Environment=R004_UPSTREAM_ALLOW=127.0.0.1:18090
+User=pakomichi-r004
+Group=pakomichi-r004
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectProc=invisible
+ProtectSystem=strict
+ReadWritePaths=/var/lib/pakomichi-r004
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0077

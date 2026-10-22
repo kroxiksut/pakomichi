@@ -1,0 +1,17 @@
+key	value
+distribution	pakomichi-r003-oracle
+os	Fedora Linux 44 (Container Image)
+base_image	library/fedora:44 (research/r-001/images.lock.json fedora44)
+kernel	Linux 6.18.40.1-microsoft-standard-WSL2 x86_64
+python	Python 3.14.8
+curl	curl 8.18.0
+gh	gh version 2.95.0 (2026-06-17)
+gh_tarball_sha256	25d1e4729e8808c9ed3d613e96ebd3f3e44446f2d368c89d878a71a36ddb3d8c
+unshare	unshare from util-linux 2.41.5
+resolve_api.github.com	140.82.121.5
+resolve_github.com	140.82.121.3
+resolve_release-assets.githubusercontent.com	198.18.1.177
+resolve_tuf-repo-cdn.sigstore.dev	34.117.62.14
+github_auth	none (no token configured; GH_CONFIG_DIR empty)
+run_stage	checks
+run_utc	20261020T104417Z

@@ -20,7 +20,7 @@
 
 ## Do not expand 0.1
 
-A GUI, WinGet, GitLab/Forgejo/Gitea, public package catalogs, automatically discovered forks, and a standalone dependency solver are separate future epics.
+A GUI, WinGet, GitLab/Forgejo/Gitea, public package catalogs, automatically discovered forks, and a standalone dependency solver are separate future epics. WinGet starts from [R-007](research/R-007-windows-msi-winget.md), which works through a concrete MSI example.
 
 ## Milestone artifacts
 

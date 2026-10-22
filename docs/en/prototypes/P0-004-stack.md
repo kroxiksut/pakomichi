@@ -55,7 +55,7 @@ These are run artifacts, not release checksums or reproducibility claims.
 
 - Runtime candidates proven here: `tokio 1.53.3` with selected features, `listenfd 1.0.2`, `rusqlite 0.40.2`, and metadata-only `rpm 0.30.2`.
 - Tokio is mandatory only for the long-lived network process. SQLite remains behind one synchronous owner; package inspection, signing, and privileged apply remain process boundaries. Concurrency uses bounded semaphores/channels and blocking work must not occupy Tokio workers.
-- The fixture/build graph contained only MIT, Apache-2.0, Unicode-3.0, Unlicense, and Zlib-compatible SPDX expressions; it contained no Git dependency.
+- Every license expression in the fixture/build graph used only MIT, Apache-2.0 (including `WITH LLVM-exception`), Unicode-3.0, Unlicense, and Zlib; `zlib-rs` was the only crate licensed solely under Zlib. The graph contained no Git dependency.
 - `gpgv` and `dpkg-deb` remain process boundaries so untrusted package bytes are not parsed by a privileged Pakomichi process.
 - GitHub CLI is suitable as an independent reference oracle for R-003. This prototype does not approve it as a mandatory installed runtime or approve the experimental Rust `sigstore` crate.
 

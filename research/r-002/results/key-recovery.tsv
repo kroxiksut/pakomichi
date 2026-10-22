@@ -1,0 +1,2 @@
+existing_snapshot_after_loss_exit	new_signing_without_key_exit	restored_signing_verify_exit	verdict
+0	2	0	PASS

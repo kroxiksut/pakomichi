@@ -1,0 +1,64 @@
+# R-004 results, alma9, AlmaLinux 9.8 (Olive Jaguar)
+id	status	observation
+S1	PASS	cold activation: status/time=200 0.070582, unit before=inactive
+S2	PASS	64 parallel GETs on an inactive service: ok=64, service starts=1
+S3	OBSERVED	two restarts during 20000 GETs: bench target=/alpha/repodata/repomd.xml connections=8 ok=19990 failed=10 seconds=2.751 req_per_s=7266.9 mib_per_s=10.7 p50_ms=1.02 p99_ms=1.79
+S4	PASS	idle exit after 3 s: state=inactive, then GET=200, pid 27242 -> 27256
+S5	PASS	SIGKILL while idle (service=failed socket=active), next GET=200
+S6	PASS	SIGKILL with a request in flight: client curl exit=52 code=000, next GET=200
+S7	OBSERVED	10 crash/request cycles: failed GETs=5; then service=failed socket=failed, GET=000; systemd: r004-snapshotd.service: Start request repeated too quickly. r004-snapshotd.socket: Failed with result 'service-start-limit-hit'. ; after reset-failed + socket start GET=200
+S8	PASS	one slow client: other GET=200 0.001214; slow connection closed after 10s
+S8b	OBSERVED	70 slow clients (limit 64 connections): another GET=200 9.993859
+S9	PASS	ordinary service fallback on loopback: GET=200; 0.0.0.0 listener: failed (error: refusing a non-loopback R004_LISTEN)
+S10	PASS	socket-activated listener on 0.0.0.0: GET=000, error: refusing a non-loopback listener
+G1	PASS	publish g1, update, install: rc=0 version=1.0
+G2	PASS	switch g1->g2 between the signed index and its referenced files: update rc=0, client metadata = g1; held requests: repodata/066cc54e11daaab98e6fca43d496d6c695958e84a9d300c9a4154738b9033654-primary.xml.gz 
+G3	OBSERVED	non-unique repodata names, connection pinning=0: makecache rc=1;   - Downloading successful, but checksum doesn't match. Calculated: 5a4f7c6139143f94d27114da2f8a4a413535905c623163ecc033f02aba2fb751(sha256)  Expected: 4713b68c3f1e37a3a466b609210e52c3ee4518ec8027059369d21232f3ff09b3(sha256) ; client connections=4
+G3p	OBSERVED	non-unique repodata names, connection pinning=1: makecache rc=1;   - Downloading successful, but checksum doesn't match. Calculated: fd530613c6974fbcd4cb4856657a9b246803443865639225dbe97cf394e1bc4e(sha256)  Expected: 31604fb67b3f5832e83019625bc4f689958a6ef2ab965006b836a35b4c199967(sha256) ; client connections=4
+G4	OBSERVED	control, old generation not retained: update rc=1;   - Status code: 404 for http://127.0.0.1:18080/alpha/repodata/b9ce4e7b7cd8ba116000c5de6ec083a34ae3b14414fbcb527541838ac8757e68-primary.xml.gz (IP: 127.0.0.1); requests: repodata/repomd.xml status=200 ;repodata/repomd.xml.asc status=200 ;repodata/74f750330eed248c6fec2282e6b1e9684c17d858d71714e97a0a5a8bc3deb20f-filelists.xml.gz status=200 ;repodata/b9ce4e7b7cd8ba116000c5de6ec083a34ae3b14414fbcb527541838ac8757e68-primary.xml.gz status=404 ;repodata/b9ce4e7b7cd8ba116000c5de6ec083a34ae3b14414fbcb527541838ac8757e68-primary.xml.gz status=404 ;repodata/b9ce4e7b7cd8ba116000c5de6ec083a34ae3b14414fbcb527541838ac8757e68-primary.xml.gz status=404 ;repodata/b9ce4e7b7cd8ba116000c5de6ec083a34ae3b14414fbcb527541838ac8757e68-primary.xml.gz status=404 ;
+G5	PASS	package of a superseded generation after the switch: old path serves old bytes=yes; client install rc=0 version=1.0 (client refreshed metadata first: no); after update+upgrade version=3.0
+G6	PASS	connection pinning off: 160 client updates in 20 rounds of 8 parallel while 34 generations were published; succeeded with inconsistent metadata=0; failed (fail closed)=0 
+G6p	PASS	connection pinning on: 160 client updates in 20 rounds of 8 parallel while 34 generations were published; succeeded with inconsistent metadata=0; failed (fail closed)=0 
+G7	OBSERVED	not applicable: repomd.xml carries no signed expiry; see G8
+G8	OBSERVED	older signed metadata served again after newer (replay): update rc=0; client now holds r-old/replay metadata; versions offered by our source:  1.0 
+G9	PASS	signing key lost: build rc=3; metadata signed by another key: publish rc=1 (signature check of repomd.xml failed); current stays r-replay; client update rc=0
+C1	PASS	lazy object, 8 parallel first requests: correct bodies=8, upstream downloads=1
+C1b	PASS	native client installs the lazily fetched package: rc=0
+C2	PASS	upstream closes after half the bytes: HTTP 502 after 0.1s, body 28 bytes, object stored=no, staging files=0
+C2b	PASS	native client on a failed lazy fetch: rc=1; [FAILED] r004-bigapp-1.0-1.noarch.rpm: No more mirrors to try - All mirrors were already tried without success
+C3	PASS	upstream stalls after 64 KiB (idle timeout 3 s): HTTP 504 after 3.0s, body 17 bytes, object stored=no, staging files=0
+C4	PASS	upstream sends other bytes of the same length: HTTP 502 after 0.2s, body 28 bytes, object stored=no, staging files=0
+C5	PASS	upstream Content-Length differs from the pinned size: HTTP 502 after 0.1s, body 28 bytes, object stored=no, staging files=0
+C6	PASS	20 MiB lazy object into a 12 MiB store: HTTP 507 (fetch-failed error=storage: No space left on device (os error 28)); used bytes 57344 -> 57344; stored package still HTTP 200
+C6b	PASS	publish on a full disk: rc=1 (error: packages/7c644e7d119169e4dfff95b8afd8c36a5a0cf7a552358373a0551168d1e9a1df/r004-sampleapp-2.0-1.noarch.rpm: No space left on device (os error 28)); current stays d1; staging=0; check rc=0
+C7-fetch-after-write	PASS	SIGKILL at fetch-after-write: client exit=52 code=000; after kill staging=1 object=no; restart removed staging=1; next GET digest ok=yes; check rc=0
+C7-fetch-after-fsync	PASS	SIGKILL at fetch-after-fsync: client exit=52 code=000; after kill staging=1 object=no; restart removed staging=1; next GET digest ok=yes; check rc=0
+C7-fetch-after-rename	PASS	SIGKILL at fetch-after-rename: client exit=52 code=000; after kill staging=0 object=yes; restart removed staging=0; next GET digest ok=yes; check rc=0
+C8-publish-object-after-write	PASS	SIGKILL of the publisher at publish-object-after-write: current=pk-publish-object-after-write-a; client update rc=0; check lines before reconcile=2; after reconcile check rc=0; same id again: republished
+C8-publish-after-objects	PASS	SIGKILL of the publisher at publish-after-objects: current=pk-publish-after-objects-a; client update rc=0; check lines before reconcile=1; after reconcile check rc=0; same id again: republished
+C8-publish-before-switch	PASS	SIGKILL of the publisher at publish-before-switch: current=pk-publish-before-switch-a; client update rc=0; check lines before reconcile=1; after reconcile check rc=0; same id again: already exists
+C8-publish-after-switch	PASS	SIGKILL of the publisher at publish-after-switch: current=pk-publish-after-switch-b; client update rc=0; check lines before reconcile=1; after reconcile check rc=0; same id again: already exists
+C9	PASS	one flipped bit in a stored object: verify-on-serve HTTP 500, client rc=1; without verify-on-serve HTTP 200 (served digest ok=no), client rc=1: [MIRROR] r004-sampleapp-1.0-1.noarch.rpm: Downloading successful, but checksum doesn't match. Calculated: e904b84cd8f87e7c7b7de8b8bdd9ed1f3e4d84222ad34550ba5638981ca2ff2f(sha256)  Expected: e16dd69b3c04830c0a1375eac59c36e38f222d36d214b67aa65cbcd1d3729f97(sha256) 
+C9b	PASS	reconcile quarantined it (1); republish restored it: HTTP 200
+C10	PASS	object replaced by a symlink to /etc/passwd: status bodylen leak = 500 19 0
+C11-1	PASS	lazy URL http://127.0.0.1:18090/r/loopback: HTTP 502; fetch-failed error=policy: address 127.0.0.1:22 of 127.0.0.1 is not allowed
+C11-2	PASS	lazy URL http://127.0.0.1:18090/r/private: HTTP 502; fetch-failed error=policy: address 10.0.0.1:80 of 10.0.0.1 is not allowed
+C11-3	PASS	lazy URL http://127.0.0.1:18090/r/metadata: HTTP 502; fetch-failed error=policy: address 169.254.169.254:80 of 169.254.169.254 is not allowed
+C11-4	PASS	lazy URL http://127.0.0.1:18090/r/v6: HTTP 502; fetch-failed error=policy: address [::1]:18090 of ::1 is not allowed
+C11-5	PASS	lazy URL http://127.0.0.1:18090/r/https: HTTP 502; fetch-failed error=policy: unsupported scheme in https://example.com/x
+C11-6	PASS	lazy URL http://127.0.0.1:18090/r/loop: HTTP 502; fetch-failed error=policy: too many redirects
+C11-7	PASS	lazy URL http://user@127.0.0.1:18090/files/r004-bigapp-1.0-1.noarch.rpm: HTTP 502; fetch-failed error=policy: credentials or empty host in URL
+C11-8	PASS	lazy URL http://localhost:22/x: HTTP 502; fetch-failed error=policy: address 127.0.0.1:22 of localhost is not allowed
+C11-9	PASS	lazy URL http://169.254.169.254/latest/meta-data/: HTTP 502; fetch-failed error=policy: address 169.254.169.254:80 of 169.254.169.254 is not allowed
+C11-10	PASS	lazy URL http://10.0.0.1/x: HTTP 502; fetch-failed error=policy: address 10.0.0.1:80 of 10.0.0.1 is not allowed
+C11-ok	PASS	relative redirect to the allowed upstream: HTTP 200
+H1	PASS	24 crafted requests (traversal, encodings, methods, Host, bodies, limits): mismatches=0, file content leaked in none
+H2	PASS	manifest replaced by a symlink: HTTP 503 (fail closed)
+D1	PASS	damaged page in state.db: publish rc=1 (error: state database quick_check: *** in database main ***); current stays d-a; client update rc=0
+D2	PASS	reconcile rebuilt state.db from manifests (rc=0, 1 generation rows); publish after it rc=0; generations rows=2
+D3	PASS	zeroed state.db header: publish rc=1 (error: state database quick_check: file is not a database); after reconcile publish rc=0
+M1	OBSERVED	publish (sampleapp + 20 MiB bigapp, sign excluded): 4.258s;cold activation, time to first response (5 runs): 0.065741 0.062386 0.091995 0.090728 0.061298;idle after activation: VmHWM:=4124kB VmRSS:=4124kB Threads:=4 ;after benches: VmHWM:=8496kB VmRSS:=8496kB ;bench target=/alpha/repodata/repomd.xml connections=8 ok=5000 failed=0 seconds=0.653 req_per_s=7656.1 mib_per_s=11.3 p50_ms=1.00 p99_ms=2.15;bench target=/alpha/packages/ee8fcfca5f6d3f905f659e32350e7afb6b08f9cafbccdf63b84796b9cb1200c9/r004-bigapp-1.0-1.noarch.rpm connections=4 ok=40 failed=0 seconds=4.447 req_per_s=9.0 mib_per_s=180.0 p50_ms=442.61 p99_ms=469.89;bench target=/alpha/packages/ee8fcfca5f6d3f905f659e32350e7afb6b08f9cafbccdf63b84796b9cb1200c9/r004-bigapp-1.0-1.noarch.rpm connections=4 ok=40 failed=0 seconds=3.550 req_per_s=11.3 mib_per_s=225.5 p50_ms=345.25 p99_ms=425.02;CAS bytes: 20998947; manifest bytes: 1068;
+T1	OBSERVED	our service down with skip_if_unavailable=False: makecache rc=1, install of a distro package rc=1; with skip_if_unavailable=True: makecache rc=0, install rc=0
+T2	OBSERVED	invalid current pointer (fail closed): full update rc=1; 'Errors during downloading metadata for repository 'r004':'
+T3a	OBSERVED	service removed, repository file left behind: full update rc=1; installed app still runs: version=1.0
+T3	PASS	service, data, and repository file removed: full update rc=0, warnings/errors=0; installed app version=1.0; third-party repository files unchanged=yes

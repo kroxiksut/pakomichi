@@ -1,0 +1,6 @@
+fixture	exit_code	key_output
+signed.rpm	0	signed.rpm:     Header OpenPGP V4 RSA/SHA256 signature, key fingerprint: 7b8fde85aa56e074fe3824f01967c2de12bb3dc7: OK     Header SHA256 digest: OK     Payload SHA256 digest: OK
+unsigned.rpm	0	unsigned.rpm:     Header SHA256 digest: OK     Payload SHA256 digest: OK
+corrupted.rpm	1	corrupted.rpm:     Header OpenPGP V4 RSA/SHA256 signature, key fingerprint: 7b8fde85aa56e074fe3824f01967c2de12bb3dc7: BAD     Header SHA256 digest: OK     Payload SHA256 digest: OK
+attested.rpm	0	attested.rpm:     Header SHA256 digest: OK     Payload SHA256 digest: OK
+unconfirmed.rpm	0	unconfirmed.rpm:     Header SHA256 digest: OK     Payload SHA256 digest: OK

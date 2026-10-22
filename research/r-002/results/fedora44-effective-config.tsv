@@ -1,0 +1,7 @@
+platform	tool	setting	value
+fedora44	dnf --dump-main-config	gpgcheck	1
+fedora44	dnf --dump-main-config	repo_gpgcheck	0
+fedora44	dnf --dump-main-config	pkg_gpgcheck	1
+fedora44	dnf --dump-main-config	gpgcheck_policy	legacy
+fedora44	dnf --dump-main-config	localpkg_gpgcheck	0
+fedora44	rpm --eval	%_pkgverify_level	digest

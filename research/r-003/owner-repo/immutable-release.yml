@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# Template for the owner's R-003 test repository: copy to
+# `.github/workflows/immutable-release.yml` there. Protocol step 1: enable
+# release immutability in the repository settings first, then create a draft,
+# attach the asset, and publish it; GitHub issues the release attestation on
+# publication. The artifact attestation is optional and lets the same asset be
+# checked in both Strict and Attested modes.
+#
+# Before use, replace every `<PIN: ...>` with a full 40-character commit SHA
+# that the owner reviewed; the template is deliberately invalid until then.
+name: r003-immutable-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: fixture version (MAJOR.MINOR.PATCH)
+        required: true
+
+permissions: {}
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@<PIN: actions/checkout full commit SHA>
+        with:
+          persist-credentials: false
+      - name: Build fixture
+        run: bash scripts/build-fixture.sh "${{ inputs.version }}" dist
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@<PIN: actions/attest-build-provenance full commit SHA>
+        with:
+          subject-path: dist/*.deb
+      - name: Draft, attach, publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release create "v${VERSION}" --draft \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "R-003 immutable v${VERSION}" \
+            --notes "R-003 immutable release"
+          gh release upload "v${VERSION}" dist/*.deb --repo "$GITHUB_REPOSITORY"
+          gh release edit "v${VERSION}" --draft=false --repo "$GITHUB_REPOSITORY"

@@ -1,0 +1,16 @@
+field	value
+provider	WSL2 disposable distribution
+distribution	Fedora Linux 44 (Container Image)
+image_reference	library/fedora:44
+image_manifest_digest	sha256:be9d65e2344d805cc11114319c685ecaa96b6d9b4350a0a6460cdb931babbd19
+image_layer_digest	sha256:59259e167f1330a2378d204c639ab48759f9d49f292cf10905abc5ac474bc6c4
+architecture	x86_64
+kernel	Linux 6.18.40.1-microsoft-standard-WSL2
+python	3.14.8
+dnf5	5.4.3.0
+gh	2.97.0
+gpg	2.4.9
+minisign	0.12
+rpm	6.0.2
+cosign	not installed; no selected row required cosign verification
+research_user	r005 (unprivileged)
