@@ -9,3 +9,6 @@ T3	after transfer: Strict, owner ID of the release time kept	PASS+name_changed	P
 F1	fork bundle against the original's pin (same owner ID)	INVALID:RepositoryIdMismatch	INVALID	RepositoryIdMismatch	-	OK	reject	Error: verifying with issuer "sigstore.dev"
 F2	fork bundle against the fork's own pin	PASS	PASS	-	timestamps:1,tlog:true	OK	accept	
 F3	fork's mutable release under Strict: no release attestation	DOWNGRADE:ReleaseAttestationMissing	DOWNGRADE	ReleaseAttestationMissing	-	OK	-	-
+C1	name capture: the holder's own release against the original's pin, Attested (gh accepts by name)	INVALID:RepositoryIdMismatch	INVALID	RepositoryIdMismatch	-	OK	accept	
+C2	name capture: the holder's release against its own pin	PASS	PASS	-	timestamps:1,tlog:true	OK	accept	
+C3	name capture: the holder's mutable release under Strict: no release attestation	DOWNGRADE:ReleaseAttestationMissing	DOWNGRADE	ReleaseAttestationMissing	-	OK	-	-

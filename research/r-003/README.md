@@ -348,6 +348,47 @@ Observations:
    `.research-local/r-003/recheck2-20261023T005002Z/`), so it is treated as
    lasting behaviour; whether a transfer back restores the lookups is not
    tested.
+5. **A transfer back is refused while the original owner has a fork.**
+   `POST repos/pchi-test-org/pchi-test-renamed/transfer` with
+   `new_owner=kroxiksut` (2026-10-23, owner's login, org admin) returned
+   HTTP 422 `kroxiksut already has a repository in the
+   pchi-test-org/pchi-test-renamed network`: the step 5 fork
+   `kroxiksut/pchi-test-fork` is in the same fork network. The phase
+   `run-owner.sh step4 transfer-back` exists but has not run.
+
+### Name capture (2026-10-23)
+
+The owner committed `.gitattributes`, `mutable-attested.yml` and
+`build-fixture.sh` (pins as in the original) to the new `kroxiksut/pchi-test`
+(ID `1429307950`, the repository that took the old name, commit `a12bcac0…`)
+and ran `r003-mutable-attested` with `0.3.0` (run `39881198690`). The release
+`v0.3.0-mutable` (ID `421346102`) has the asset
+`pakomichi-r003-fixture_0.3.0_all.deb` (asset `667564280`, `d3c6baed…`) with
+its own build provenance. The phase checks it against the pin of the
+original: repository `1429109739`, owner `2264172`.
+
+```powershell
+wsl.exe -d pakomichi-r003-oracle -u root --cd /tmp -- bash /mnt/d/Projects/pakomichi/research/r-003/run-owner.sh step4 capture
+```
+
+Raw data: `.research-local/r-003/owner-step4-capture-20261023T010251Z/`.
+7 cases, none unexpected, token found in no file. Files:
+`results/owner-step4-capture-{release,assets,attestations,checks,reconcile,reconcile-vs-pin,api-requests,environment}.tsv`.
+
+1. **A source pinned by name accepts another repository's release.**
+   `--repo kroxiksut/pchi-test` passes offline and online, and so do the
+   original's signer workflow path
+   `kroxiksut/pchi-test/.github/workflows/mutable-attested.yml` and
+   `--owner kroxiksut`. Against the holder's own IDs every field matches: the
+   attestation is genuine, only it belongs to another repository.
+2. **Only the repository ID rejects it.** Against the pin the owner ID,
+   digest, ref, commit, hosted runner and issuer all match; only the
+   repository ID differs (`1429307950` ≠ `1429109739`,
+   `owner-step4-capture-reconcile-vs-pin.tsv`). With the original's current
+   name the asset fails.
+3. **The same bytes are attested by two repositories.** The fixture build is
+   reproducible, so the digest equals the fork's `v0.3.0-mutable` asset from
+   step 5. A digest alone does not identify the source either.
 
 ## Owner repository: step 5 (2026-10-22)
 

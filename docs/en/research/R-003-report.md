@@ -2,7 +2,7 @@
 
 **English** · [Русский](../../ru/research/R-003-report.md)
 
-- **Date / performed by:** 2026-10-20 (read-only part) and 2026-10-22 (owner's test repository), read-only transfer recheck 2026-10-23, programming agent at the project owner's request; protocol: [R-003](R-003-github-provenance.md).
+- **Date / performed by:** 2026-10-20 (read-only part) and 2026-10-22 (owner's test repository), read-only transfer recheck and name capture 2026-10-23, programming agent at the project owner's request; protocol: [R-003](R-003-github-provenance.md).
 - **Outcome:** **PASS**. All seven protocol steps ran, and the actual JSON verification results and the exact matching rules are preserved. The production verifier was chosen separately in [ADR-030](../decisions/ADR-030.md). The observation after the transfer (step 4, finding 6) did not change at a read-only recheck about 19 hours later.
 - **Main fact:** a repository name never identifies a GitHub source. After a rename, the old name verifies and the new one does not. After another repository takes the old name, artifacts of the original still pass `--repo` with that name. A fork in the same account has the original's owner ID. Only the repository ID separates all these cases, and Pakomichi must compare it itself, because `gh attestation verify` binds by name.
 
@@ -22,7 +22,7 @@ powershell -NoProfile -File research/r-003/wsl-import.ps1 -Name pakomichi-r003-o
 wsl.exe -d pakomichi-r003-oracle -u root --cd /tmp -- bash /mnt/d/Projects/pakomichi/research/r-003/bootstrap.sh
 wsl.exe -d pakomichi-r003-oracle -u root --cd /tmp -- bash /mnt/d/Projects/pakomichi/research/r-003/run.sh all
 wsl.exe -d pakomichi-r003-oracle -u root --cd /tmp -- bash /mnt/d/Projects/pakomichi/research/r-003/run-owner.sh step1
-# step2, step3, step4 rename|reuse|transfer, step5 in the same way
+# step2, step3, step4 rename|reuse|transfer|capture, step5 in the same way
 ```
 
 `research/r-003/r003.py` is the read-only harness. `research/r-003/owner.py` reuses it for the owner steps, and `run-owner.sh` hands it the token. `research/r-003/README.md` gives the exact repository operation before each run. Sanitized results are in `research/r-003/results/` (`*.tsv` from the read-only run, `owner-step*-*.tsv` from the owner steps). Raw API responses, bundles, downloads and complete oracle output are in the ignored `.research-local/r-003/`.
@@ -59,7 +59,7 @@ Step 4 in detail: the same step 1 asset and bundle checked after each operation.
 1. **Release attestation lookup by commit is ambiguous.** For `v0.2.0-mutable`, `attestations/sha1:<tag commit>` returned the release attestation of `v0.1.0`, because both tags point to the same commit. Finding a release attestation for the tag commit does not make a release Strict; `databaseId` and `tag` must match the release being checked. `gh release verify` handles this correctly.
 2. **An attestation outlives its asset.** After the replacement, the removed asset still verifies online by digest and offline with its bundle. A valid attestation does not prove that the file is a current asset of the release.
 3. **Rename keeps the ID and breaks name binding.** Certificates keep the old repository URI. `--repo <new name>` fails and the old name passes; `gh release verify` follows the repository and passes under both names.
-4. **Reuse of an old name.** Once another repository holds the old name, artifacts of the original still pass `--repo` with that name. Only the repository ID shows that the name now belongs to someone else.
+4. **Reuse of an old name.** Once another repository holds the old name, artifacts of the original still pass `--repo` with that name. Only the repository ID shows that the name now belongs to someone else. The reverse holds as well (name capture, 2026-10-23): the new `kroxiksut/pchi-test` published its own attested `v0.3.0-mutable` (release `421346102`, asset `667564280`), and `--repo kroxiksut/pchi-test`, the original's signer workflow path and `--owner kroxiksut` all accept it. Against the original's pin the owner ID, digest, ref, commit, runner and issuer match; only the repository ID differs (`1429307950` ≠ `1429109739`, `results/owner-step4-capture-reconcile-vs-pin.tsv`). Its asset is byte-identical to the fork's from step 5 (`d3c6baed…`), so a digest does not identify the source either.
 5. **Transfer changes the owner ID**, so the certificates' owner ID no longer matches: the source must be suspended until the owner confirms it again (ADR-030 point 5). Attestations made before the transfer keep the old owner ID, so confirming the source again must add the new owner ID to the old one, not replace it; otherwise releases published before the transfer stop verifying (probe cases T1–T3 below).
 6. **Attestations did not follow the transfer.** Within minutes of the transfer, and unchanged at read-only rechecks about 40 minutes, about 4 hours and about 19 hours later, `attestations/…` returned HTTP 404 for the repository (by name and by `/repositories/1429109739`) and for the organization, while `users/kroxiksut/attestations/…` still returned both bundles with repository ID `1429109739`. `gh release verify` for the immutable `v0.1.0` failed although the release stayed `immutable=True`. Bundles stored before a transfer still verify offline. Strict fetching must therefore not depend on fetching attestations after a transfer; it relies on bundles stored at admission.
 7. **Owner ID alone does not reject a fork.** The fork lives in the account that created the original, so its owner ID equals the owner ID in the original's earlier certificates, and `--owner kroxiksut` accepts the fork's asset. Only the repository ID separates them.
@@ -69,7 +69,7 @@ Step 4 in detail: the same step 1 asset and bundle checked after each operation.
 
 ## Production verifier
 
-R-003 used `gh` only as the reference oracle (ADR-017 point 9). The production verifier is decided in [ADR-030](../decisions/ADR-030.md): `sigstore-verify` `=0.15.0` behind a Pakomichi interface. Strict uses GitHub's root, the SAN `https://dotcom.releases.github.com` and an RFC 3161 timestamp, and binds only by the predicate `repositoryId`/`packageId`/`ownerId`/`databaseId`/`tag`. Attested uses the public-good root and binds by Fulcio `.1.15`/`.1.17`. Its probe on the recorded R-003 evidence is `research/r-003/results/verifier-probe-cases.tsv` (60 of 60 as expected), and `research/r-003/results/verifier-probe-oracle.tsv` (`gh` 2.103.0 agrees in 26 of 26 comparable Attested cases; for a renamed repository `gh` rejects by name, while ADR-030 passes by ID with a notice). The cross-check of that verifier on the step 4 and 5 bundles (P1-003c, `research/r-003/verifier-probe-owner.sh`, results `research/r-003/results/verifier-probe-owner.tsv`) gave 10 of 10 as expected:
+R-003 used `gh` only as the reference oracle (ADR-017 point 9). The production verifier is decided in [ADR-030](../decisions/ADR-030.md): `sigstore-verify` `=0.15.0` behind a Pakomichi interface. Strict uses GitHub's root, the SAN `https://dotcom.releases.github.com` and an RFC 3161 timestamp, and binds only by the predicate `repositoryId`/`packageId`/`ownerId`/`databaseId`/`tag`. Attested uses the public-good root and binds by Fulcio `.1.15`/`.1.17`. Its probe on the recorded R-003 evidence is `research/r-003/results/verifier-probe-cases.tsv` (60 of 60 as expected), and `research/r-003/results/verifier-probe-oracle.tsv` (`gh` 2.103.0 agrees in 26 of 26 comparable Attested cases; for a renamed repository `gh` rejects by name, while ADR-030 passes by ID with a notice). The cross-check of that verifier on the step 4 and 5 bundles (P1-003c, `research/r-003/verifier-probe-owner.sh`, results `research/r-003/results/verifier-probe-owner.tsv`) gave 13 of 13 as expected, including the name capture added on 2026-10-23:
 
 | Case | Input and pin | ADR-030 probe | `gh` 2.103.0 offline |
 |---|---|---|---|
@@ -80,13 +80,15 @@ R-003 used `gh` only as the reference oracle (ADR-017 point 9). The production v
 | F1 | fork bundle (`1429309242`, owner `2264172`) against the original's pin | `RepositoryIdMismatch` | rejects |
 | F2 | fork bundle against the fork's own pin | PASS | accepts |
 | F3 | the fork's mutable release under Strict | DOWNGRADE `ReleaseAttestationMissing` | — |
+| C1 | name capture: the new `kroxiksut/pchi-test`'s own `v0.3.0-mutable` bundle against the original's pin | `RepositoryIdMismatch` | **accepts** with `--repo kroxiksut/pchi-test` |
+| C2 | the same bundle against the new repository's own pin | PASS | accepts |
+| C3 | the same mutable release under Strict | DOWNGRADE `ReleaseAttestationMissing` | — |
 
-U2 is the case this protocol exists for: a repository that took the old name is accepted by name-based verification and rejected only by repository ID.
+U2 and C1 are the cases this protocol exists for: a repository that took the old name is accepted by name-based verification and rejected only by repository ID, both with the original's artifacts and with its own attested release.
 
 ## Not covered
 
 - Finding 6 held for about 19 hours after the transfer (`results/owner-step4-transfer-attestation-lookup.tsv`) and is treated as lasting behaviour; GitHub does not document it, and whether a transfer back restores the lookups was not tested.
-- A release published from a new repository that took an old name was not created; finding 4 rests on the original's artifacts.
 - Private repositories, GitHub Enterprise, reusable signer workflows from another repository, and the TUF client (P2-003) are outside this protocol.
 
 ## Conclusion

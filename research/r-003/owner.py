@@ -539,8 +539,10 @@ def safe(name: str) -> str:
 def step4(args: argparse.Namespace) -> int:
     """Protocol step 4: the same cases after rename, name reuse, and transfer."""
     phase = args.phase
-    if phase not in ("rename", "reuse", "transfer"):
-        r.die("step4 needs --phase rename|reuse|transfer")
+    if phase not in ("rename", "reuse", "transfer", "transfer-back", "capture"):
+        r.die("step4 needs --phase rename|reuse|transfer|transfer-back|capture")
+    if phase == "capture":
+        return step4_capture(args)
     step = f"step4-{phase}"
     work, results, raw, token, api, runner = prepare(args, 7)
     online = online_runner(runner, token)
@@ -600,6 +602,90 @@ def step4(args: argparse.Namespace) -> int:
         online(f"O4-release-verify-{key}-name", f"online: gh release verify {s1['release_tag']} -R {label} ({name})",
                ["release", "verify", s1["release_tag"], "--repo", name, "--format", "json"], expect_success=None)
     return finish(runner, token, work, results, step, [], [])
+
+
+def step4_capture(args: argparse.Namespace) -> int:
+    """Step 4, name capture: the repository that took the old name publishes its own attested release.
+
+    A source pinned by name accepts it; only the repository ID of the original pin rejects it.
+    """
+    step = "step4-capture"
+    work, results, raw, token, api, runner = prepare(args, 10)
+    online = online_runner(runner, token)
+    s1 = json.loads((pathlib.Path(args.step1_run) / "collect.json").read_text())
+    pin_repo_id, pin_owner_id = s1["repository_id"], s1["owner_id"]
+    holder, tag = args.repo, args.tag
+    target = r.collect_release(api, r.load_snappy_decoder(), work, holder, tag, lambda n: n.endswith(".deb"), "s4c")
+    status, original = api.get(f"/repositories/{pin_repo_id}", "original-by-id.json")
+    original = original if isinstance(original, dict) else {}
+    status, holder_data = api.get(f"/repos/{holder}", "holder-repository.json")
+    holder_data = holder_data if isinstance(holder_data, dict) else {}
+    api.get("/rate_limit", "rate_limit_after.json", counted=False)
+    (work / "collect.json").write_text(json.dumps(target, indent=2) + "\n")
+    if len(target["assets"]) != 1:
+        r.die(f"expected exactly one .deb asset, found {len(target['assets'])}")
+    asset = target["assets"][0]
+    original_name = original.get("full_name", "")
+    facts = [
+        ("pinned_name", ORIGINAL_REPO),
+        ("pinned_repository_id", pin_repo_id),
+        ("pinned_owner_id", pin_owner_id),
+        ("holder_full_name", holder_data.get("full_name")),
+        ("holder_repository_id", holder_data.get("id")),
+        ("holder_owner_id", (holder_data.get("owner") or {}).get("id")),
+        ("holder_fork_flag", holder_data.get("fork")),
+        ("original_current_name", original_name),
+        ("original_current_owner_id", (original.get("owner") or {}).get("id")),
+        ("holder_release_id", target["release_id"]),
+        ("holder_release_tag", target["release_tag"]),
+        ("holder_tag_commit", target["tag_commit"]),
+        ("api_requests_counted", api.count),
+    ]
+    r.write_tsv(results / f"owner-{step}-release.tsv", [{"field": k, "value": "" if v is None else str(v)} for k, v in facts])
+    r.write_tsv(results / f"owner-{step}-assets.tsv", [asset_row(asset)])
+    r.write_tsv(results / f"owner-{step}-attestations.tsv", attestation_rows(target, work / "bundles"))
+
+    negatives = work / "negatives"
+    negatives.mkdir(exist_ok=True)
+    file = work / "downloads" / asset["local"]
+    slsa = split_by_predicate(work / "bundles" / asset["bundle_file"], negatives, "asset").get(r.SLSA_V1)
+    root = fetch_root(runner, work, results, step)
+    if not slsa:
+        r.write_tsv(results / f"owner-{step}-checks.tsv", runner.rows)
+        r.die("the holder's asset has no build provenance")
+    offline = ["--bundle", str(slsa), *root]
+    reconcile_rows: list[dict[str, str]] = []
+    pin_rows: list[dict[str, str]] = []
+    result = runner.run("C4-pinned-name", f"offline: the holder's asset with --repo {ORIGINAL_REPO}, the name pinned at admission",
+                        ["attestation", "verify", str(file), "--repo", ORIGINAL_REPO, *offline, "--format", "json"],
+                        expect_success=None)
+    if result.returncode == 0:
+        verification = json.loads(result.stdout)
+        # Against the holder's own facts every field must match: it is genuinely its build.
+        reconcile_rows += r.reconcile("C4-holder-own-ids", verification, {
+            "repository_id": holder_data.get("id"), "owner_id": (holder_data.get("owner") or {}).get("id"),
+            "sha256": asset["downloaded_sha256"], "api_digest": asset["api_digest"],
+            "source_ref": args.source_ref, "commit": target["tag_commit"],
+        })
+        # Against the original pin: the repository ID must fail; the owner ID is the same account.
+        pin_rows += r.reconcile("C4-holder-vs-pin", verification, {
+            "repository_id": pin_repo_id, "owner_id": pin_owner_id,
+            "sha256": asset["downloaded_sha256"], "api_digest": asset["api_digest"],
+            "source_ref": args.source_ref, "commit": target["tag_commit"],
+        })
+    runner.run("C4-pinned-signer-workflow", "offline: signer workflow path of the original under the pinned name",
+               ["attestation", "verify", str(file), "--repo", ORIGINAL_REPO, *offline,
+                "--signer-workflow", f"{ORIGINAL_REPO}/.github/workflows/mutable-attested.yml"], expect_success=None)
+    runner.run("C4-owner-only", "offline: --owner of the pinned name (owner-only binding)",
+               ["attestation", "verify", str(file), "--owner", ORIGINAL_REPO.split("/")[0], *offline], expect_success=None)
+    if original_name:
+        runner.run("N4C-original-current-name", f"offline: the holder's asset with --repo of the original ({original_name})",
+                   ["attestation", "verify", str(file), "--repo", original_name, *offline], expect_success=False)
+    online("A4C-online-pinned-name", f"online: attestation lookup with --repo {ORIGINAL_REPO}",
+           ["attestation", "verify", str(file), "--repo", ORIGINAL_REPO, "--format", "json"], expect_success=None)
+    # Expected to mismatch on the repository ID: written apart from finish().
+    r.write_tsv(results / f"owner-{step}-reconcile-vs-pin.tsv", pin_rows)
+    return finish(runner, token, work, results, step, reconcile_rows, [])
 
 
 def step5(args: argparse.Namespace) -> int:
@@ -850,7 +936,7 @@ def main() -> int:
         stage.add_argument("--other-owner", default="pchi-test-org")
         stage.add_argument("--baseline", default="", help="step3: raw directory of the step 2 run")
         stage.add_argument("--expected-sha256", default="", help="step3: digest of the local rebuild")
-        stage.add_argument("--phase", default="", help="step4: rename|reuse|transfer")
+        stage.add_argument("--phase", default="", help="step4: rename|reuse|transfer|transfer-back|capture")
         stage.add_argument("--step1-run", default="", help="step4: raw directory of the step 1 run")
         stage.add_argument("--extra-name", default="", help="step4: another repository name to resolve")
     args = parser.parse_args()

@@ -6,13 +6,14 @@
 # hand it the read-only token as a 0600 file, and to copy results.
 #
 #   bash research/r-003/run-owner.sh step1|step2|step3|step5
-#   bash research/r-003/run-owner.sh step4 rename|reuse|transfer
+#   bash research/r-003/run-owner.sh step4 rename|reuse|transfer|transfer-back|capture
 #
 # step3 compares against the recorded step 2 run (R003_STEP2_RUN, a directory
 # name under .research-local/r-003/) and the digest of the local rebuild of
 # the replacement (R003_REBUILD_SHA256). step4 reuses the step 1 evidence
-# (R003_STEP1_RUN) and may resolve one more name (R003_EXTRA_NAME). step5
-# checks the fork R003_FORK.
+# (R003_STEP1_RUN) and may resolve one more name (R003_EXTRA_NAME); its
+# capture phase checks the release R003_CAPTURE_TAG of the repository that
+# took the old name. step5 checks the fork R003_FORK.
 set -euo pipefail
 
 stage="${1:-}"
@@ -24,13 +25,14 @@ readonly step1_run="${R003_STEP1_RUN:-owner-step1-20261022T050816Z}"
 readonly step2_run="${R003_STEP2_RUN:-owner-step2-20261022T053242Z}"
 readonly rebuild_sha256="${R003_REBUILD_SHA256:-a59a5cfd27b6b5090de79452c96ca6526cfddda93b1b2fab559f08ac8bdf41f9}"
 readonly fork="${R003_FORK:-kroxiksut/pchi-test-fork}"
+readonly capture_tag="${R003_CAPTURE_TAG:-v0.3.0-mutable}"
 
 case "$stage" in
     step1|step2|step3|step5) label="$stage" ;;
     step4)
         case "$phase" in
-            rename|reuse|transfer) label="step4-$phase" ;;
-            *) echo "usage: run-owner.sh step4 rename|reuse|transfer" >&2; exit 2 ;;
+            rename|reuse|transfer|transfer-back|capture) label="step4-$phase" ;;
+            *) echo "usage: run-owner.sh step4 rename|reuse|transfer|transfer-back|capture" >&2; exit 2 ;;
         esac
         ;;
     *) echo "usage: run-owner.sh step1|step2|step3|step5 or step4 PHASE" >&2; exit 2 ;;
@@ -81,6 +83,7 @@ case "$stage" in
         test -f "$local_root/$step1_run/collect.json"
         extra=(--phase "$phase" --step1-run "$local_root/$step1_run")
         if [[ -n "${R003_EXTRA_NAME:-}" ]]; then extra+=(--extra-name "$R003_EXTRA_NAME"); fi
+        if [[ "$phase" == capture ]]; then extra+=(--tag "$capture_tag"); fi
         ;;
     step5)
         extra=(--repo "$fork")

@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 #
 # P1-003c cross-check on the owner's test repository after R-003 steps 4-5
-# (rename, reuse of the old name, transfer, fork). Rename and transfer create
+# (rename, reuse of the old name, transfer, fork) and the step 4 name capture.
+# Rename and transfer create
 # no new attestations, so the recorded v0.1.0 bundles are verified against
 # what Pakomichi would expect after each event; the fork has its own bundle.
 # Each probe case is paired, where gh can express it, with the gh 2.103.0
@@ -20,6 +21,7 @@ tarball=/mnt/c/temp/pakomichi/p1-003c/tools/gh_${gh_version}_linux_amd64.tar.gz
 r003="$project_root/.research-local/r-003"
 step1="$r003/owner-step1-20261022T050816Z"
 step5="$r003/owner-step5-20261022T060919Z"
+capture="$r003/owner-step4-capture-20261023T010251Z"
 out_dir="$project_root/.research-local/p1-003c/probe"
 work="$(mktemp -d /tmp/pakomichi-p1003c-owner-XXXXXX)"
 trap 'rm -rf "$work"' EXIT
@@ -63,6 +65,14 @@ fork_attested() { # repo-id owner-id repo-name
     echo --expect repo-id="$1" --expect owner-id="$2" --expect repo-name="$3" \
         --expect workflow=.github/workflows/mutable-attested.yml --expect ref=refs/heads/main \
         --expect commit=31c0b80f18969c5f8b70912bbba18dae9bdeea02
+}
+# v0.3.0-mutable of the repository that took the old name (step 4 capture), SLSA only.
+cap_bundle="$capture/bundles/s4c/667564280.jsonl"
+cap_asset="$capture/downloads/s4c/667564280-pakomichi-r003-fixture_0.3.0_all.deb"
+cap_attested() { # repo-id owner-id repo-name
+    echo --expect repo-id="$1" --expect owner-id="$2" --expect repo-name="$3" \
+        --expect workflow=.github/workflows/mutable-attested.yml --expect ref=refs/heads/main \
+        --expect commit=a12bcac035afcfbab2838660c3fe636a59677a61
 }
 
 table="$out_dir/owner.tsv"
@@ -123,6 +133,17 @@ owner_case F2 "fork bundle against the fork's own pin" PASS accept \
 owner_case F3 "fork's mutable release under Strict: no release attestation" DOWNGRADE:ReleaseAttestationMissing - "" \
     "${S[@]}" --bundle "$fork_bundle" --artifact "$fork_asset" --expect repo-id=$fork_id --expect owner-id=$user_owner \
     --expect release-id=420357583 --expect tag=v0.3.0-mutable --expect commit=31c0b80f18969c5f8b70912bbba18dae9bdeea02 \
+    --expect asset-name=pakomichi-r003-fixture_0.3.0_all.deb
+owner_case C1 "name capture: the holder's own release against the original's pin, Attested (gh accepts by name)" \
+    INVALID:RepositoryIdMismatch accept \
+    "$cap_asset --repo kroxiksut/pchi-test --bundle $cap_bundle" \
+    "${A[@]}" --bundle "$cap_bundle" --artifact "$cap_asset" $(cap_attested $orig_id $user_owner kroxiksut/pchi-test)
+owner_case C2 "name capture: the holder's release against its own pin" PASS accept \
+    "$cap_asset --repo kroxiksut/pchi-test --bundle $cap_bundle" \
+    "${A[@]}" --bundle "$cap_bundle" --artifact "$cap_asset" $(cap_attested $reuse_id $user_owner kroxiksut/pchi-test)
+owner_case C3 "name capture: the holder's mutable release under Strict: no release attestation" DOWNGRADE:ReleaseAttestationMissing - "" \
+    "${S[@]}" --bundle "$cap_bundle" --artifact "$cap_asset" --expect repo-id=$reuse_id --expect owner-id=$user_owner \
+    --expect release-id=421346102 --expect tag=v0.3.0-mutable --expect commit=a12bcac035afcfbab2838660c3fe636a59677a61 \
     --expect asset-name=pakomichi-r003-fixture_0.3.0_all.deb
 }
 
