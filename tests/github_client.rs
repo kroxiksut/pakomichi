@@ -13,9 +13,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use pakomichi::error::{ObjectKind, ObjectReference, ReasonCode, SafeIdentifier};
 use pakomichi::github::{
     ApiRequest, ApiResponse, ClientConfig, Clock, EtagCache, Freshness, GitHubClient, GitHubError,
-    IdentityOutcome, OwnerId, OwnerLogin, PaginationError, PinnedRepository, RateLimitKind,
-    RateLimited, RepositoryId, RepositoryIdentity, RepositoryName, ResponseHeaders, Token,
-    Transport, TransportError, WireError,
+    GitObjectId, IdentityOutcome, OwnerId, OwnerLogin, PaginationError, PinnedRepository,
+    RateLimitKind, RateLimited, RepositoryId, RepositoryIdentity, RepositoryName, ResponseHeaders,
+    TagObjectKind, TagRef, Token, Transport, TransportError, WireError,
 };
 use serde_json::{Value, json};
 
@@ -699,6 +699,297 @@ async fn missing_releases_and_tags_are_none_and_tags_are_encoded() -> TestResult
         client.release_by_tag(&pinned()?, "bad\ntag").await,
         Err(GitHubError::InvalidArgument("tag"))
     );
+    Ok(())
+}
+
+// ---------------------------------------------------------- tag references
+
+/// `github/github-mcp-server` v2.0.2 as observed on 2026-10-22.
+const MCP_REPOSITORY: u64 = 942_771_284;
+const MCP_TAG_OBJECT: &str = "503622d154b505a9cebff296a13bc6c9259ea993";
+const MCP_COMMIT: &str = "eb47a99ddb866ca2b8a162920e6bda9521f33ebb";
+
+fn tag_ref_body(tag: &str, sha: &str, kind: &str) -> Value {
+    json!({
+        "ref": format!("refs/tags/{tag}"),
+        "node_id": "REF_synthetic",
+        "url": format!("https://api.github.com/repos/alice/tool/git/refs/tags/{tag}"),
+        "object": {
+            "sha": sha,
+            "type": kind,
+            "url": format!("https://api.github.com/repos/alice/tool/git/tags/{sha}")
+        }
+    })
+}
+
+fn tag_object_body(sha: &str, tag: &str, target: &str, kind: &str) -> Value {
+    json!({
+        "node_id": "TAG_synthetic",
+        "sha": sha,
+        "url": format!("https://api.github.com/repos/alice/tool/git/tags/{sha}"),
+        "tagger": {"name": "alice", "email": "alice@example.invalid", "date": "2026-10-01T12:00:00Z"},
+        "object": {"sha": target, "type": kind, "url": "https://api.github.com/x"},
+        "tag": tag,
+        "message": "v2.0.2\n",
+        "verification": {"verified": false, "reason": "unsigned"}
+    })
+}
+
+fn mcp() -> Result<RepositoryId, Box<dyn Error>> {
+    Ok(RepositoryId::new(MCP_REPOSITORY)?)
+}
+
+#[tokio::test]
+async fn a_lightweight_tag_names_its_commit() -> TestResult {
+    let fake = FakeTransport::default();
+    fake.push(response(200, &tag_ref_body("v1.0.0", MCP_COMMIT, "commit")))
+        .push(response(200, &tag_ref_body("v1.0.0", MCP_COMMIT, "commit")));
+    let client = client(&fake);
+    let fetched = client
+        .tag_ref(mcp()?, "v1.0.0")
+        .await?
+        .ok_or("tag missing")?;
+    assert_eq!(fetched.freshness, Freshness::Modified);
+    assert_eq!(
+        fetched.value,
+        TagRef {
+            ref_name: "refs/tags/v1.0.0".to_owned(),
+            object: GitObjectId::from_hex(MCP_COMMIT)?,
+            kind: TagObjectKind::Commit,
+        }
+    );
+    assert_eq!(
+        client.peeled_commit(mcp()?, "v1.0.0").await?,
+        Some(GitObjectId::from_hex(MCP_COMMIT)?)
+    );
+    // A lightweight tag needs no tag-object read.
+    assert_eq!(
+        fake.paths(),
+        [
+            "/repositories/942771284/git/ref/tags/v1.0.0",
+            "/repositories/942771284/git/ref/tags/v1.0.0"
+        ]
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn an_annotated_tag_ref_is_the_tag_object_and_peels_to_the_commit() -> TestResult {
+    let fake = FakeTransport::default();
+    fake.push(response(
+        200,
+        &tag_ref_body("v2.0.2", MCP_TAG_OBJECT, "tag"),
+    ))
+    .push(response(
+        200,
+        &tag_ref_body("v2.0.2", MCP_TAG_OBJECT, "tag"),
+    ))
+    .push(response(
+        200,
+        &tag_object_body(MCP_TAG_OBJECT, "v2.0.2", MCP_COMMIT, "commit"),
+    ));
+    let client = client(&fake);
+    let reference = client
+        .tag_ref(mcp()?, "v2.0.2")
+        .await?
+        .ok_or("tag missing")?
+        .value;
+    // Never peeled: the Strict check needs the tag object itself.
+    assert_eq!(reference.object, GitObjectId::from_hex(MCP_TAG_OBJECT)?);
+    assert_eq!(reference.kind, TagObjectKind::Tag);
+    assert_eq!(
+        client.peeled_commit(mcp()?, "v2.0.2").await?,
+        Some(GitObjectId::from_hex(MCP_COMMIT)?)
+    );
+    assert_eq!(
+        fake.paths(),
+        [
+            "/repositories/942771284/git/ref/tags/v2.0.2",
+            "/repositories/942771284/git/ref/tags/v2.0.2",
+            format!("/repositories/942771284/git/tags/{MCP_TAG_OBJECT}").as_str()
+        ]
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_ref_for_another_tag_is_refused() -> TestResult {
+    let fake = FakeTransport::default();
+    // GitHub's prefix match: `v1` answered with `v1.0.0`.
+    fake.push(response(200, &tag_ref_body("v1.0.0", MCP_COMMIT, "commit")))
+        .push(response(
+            200,
+            &json!({"ref": "refs/heads/v1", "object": {"sha": MCP_COMMIT, "type": "commit"}}),
+        ))
+        .push(response(
+            200,
+            &json!([tag_ref_body("v1.0.0", MCP_COMMIT, "commit")]),
+        ));
+    let client = client(&fake);
+    assert!(matches!(
+        client.tag_ref(mcp()?, "v1").await,
+        Err(GitHubError::Wire(WireError::Invalid { field: "ref", .. }))
+    ));
+    assert!(matches!(
+        client.tag_ref(mcp()?, "v1").await,
+        Err(GitHubError::Wire(WireError::Invalid { field: "ref", .. }))
+    ));
+    assert!(matches!(
+        client.tag_ref(mcp()?, "v1").await,
+        Err(GitHubError::Wire(WireError::Json { .. }))
+    ));
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_tag_naming_a_tree_or_blob_is_refused() -> TestResult {
+    let fake = FakeTransport::default();
+    for kind in ["tree", "blob", "Commit"] {
+        fake.push(response(200, &tag_ref_body("v1", MCP_COMMIT, kind)));
+    }
+    let client = client(&fake);
+    for kind in ["tree", "blob", "Commit"] {
+        assert_eq!(
+            client.tag_ref(mcp()?, "v1").await,
+            Err(GitHubError::Wire(WireError::Invalid {
+                field: "object.type",
+                problem: "neither a commit nor a tag",
+            })),
+            "{kind}"
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn uppercase_or_short_object_ids_are_refused() -> TestResult {
+    let fake = FakeTransport::default();
+    let upper = MCP_COMMIT.to_ascii_uppercase();
+    let short = &MCP_COMMIT[..7];
+    fake.push(response(200, &tag_ref_body("v1", &upper, "commit")))
+        .push(response(200, &tag_ref_body("v1", short, "commit")))
+        .push(response(200, &tag_ref_body("v1", MCP_TAG_OBJECT, "tag")))
+        .push(response(
+            200,
+            &tag_object_body(MCP_TAG_OBJECT, "v1", short, "commit"),
+        ));
+    let client = client(&fake);
+    for _ in 0..2 {
+        assert!(matches!(
+            client.tag_ref(mcp()?, "v1").await,
+            Err(GitHubError::Wire(WireError::Invalid {
+                field: "object.sha",
+                ..
+            }))
+        ));
+    }
+    assert!(matches!(
+        client.peeled_commit(mcp()?, "v1").await,
+        Err(GitHubError::Wire(WireError::Invalid {
+            field: "object.sha",
+            ..
+        }))
+    ));
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_tag_of_a_tag_is_not_peeled() -> TestResult {
+    let fake = FakeTransport::default();
+    fake.push(response(
+        200,
+        &tag_ref_body("v2.0.2", MCP_TAG_OBJECT, "tag"),
+    ))
+    .push(response(
+        200,
+        &tag_object_body(MCP_TAG_OBJECT, "v2.0.2", MCP_COMMIT, "tag"),
+    ));
+    let client = client(&fake);
+    assert!(matches!(
+        client.peeled_commit(mcp()?, "v2.0.2").await,
+        Err(GitHubError::Wire(WireError::Invalid {
+            field: "object.type",
+            ..
+        }))
+    ));
+    // Exactly one tag-object read, no second level.
+    assert_eq!(fake.paths().len(), 2);
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_tag_object_for_another_tag_or_sha_is_refused() -> TestResult {
+    let fake = FakeTransport::default();
+    fake.push(response(
+        200,
+        &tag_ref_body("v2.0.2", MCP_TAG_OBJECT, "tag"),
+    ))
+    .push(response(
+        200,
+        &tag_object_body(MCP_TAG_OBJECT, "v2.0.1", MCP_COMMIT, "commit"),
+    ))
+    .push(response(
+        200,
+        &tag_ref_body("v2.0.2", MCP_TAG_OBJECT, "tag"),
+    ))
+    .push(response(
+        200,
+        &tag_object_body(MCP_COMMIT, "v2.0.2", MCP_COMMIT, "commit"),
+    ));
+    let client = client(&fake);
+    assert!(matches!(
+        client.peeled_commit(mcp()?, "v2.0.2").await,
+        Err(GitHubError::Wire(WireError::Invalid { field: "tag", .. }))
+    ));
+    assert!(matches!(
+        client.peeled_commit(mcp()?, "v2.0.2").await,
+        Err(GitHubError::Wire(WireError::Invalid { field: "sha", .. }))
+    ));
+    Ok(())
+}
+
+#[tokio::test]
+async fn tag_refs_are_encoded_per_segment_and_missing_tags_are_none() -> TestResult {
+    let fake = FakeTransport::default();
+    fake.push(response(
+        200,
+        &tag_ref_body("release/1.0+b", MCP_COMMIT, "commit"),
+    ))
+    .push(status_only(
+        404,
+        ResponseHeaders::default(),
+        r#"{"message":"Not Found"}"#,
+    ))
+    .push(status_only(
+        404,
+        ResponseHeaders::default(),
+        r#"{"message":"Not Found"}"#,
+    ));
+    let client = client(&fake);
+    let fetched = client
+        .tag_ref(mcp()?, "release/1.0+b")
+        .await?
+        .ok_or("tag missing")?;
+    assert_eq!(fetched.value.ref_name, "refs/tags/release/1.0+b");
+    assert_eq!(client.tag_ref(mcp()?, "v9").await?, None);
+    assert_eq!(client.peeled_commit(mcp()?, "v9").await?, None);
+    assert_eq!(
+        fake.paths(),
+        [
+            "/repositories/942771284/git/ref/tags/release/1.0%2Bb",
+            "/repositories/942771284/git/ref/tags/v9",
+            "/repositories/942771284/git/ref/tags/v9"
+        ]
+    );
+    for tag in ["", "bad\ntag", "a//b", "/v1"] {
+        assert_eq!(
+            client.tag_ref(mcp()?, tag).await,
+            Err(GitHubError::InvalidArgument("tag")),
+            "{tag:?}"
+        );
+    }
+    // Refused before any request.
+    assert_eq!(fake.paths().len(), 3);
     Ok(())
 }
 

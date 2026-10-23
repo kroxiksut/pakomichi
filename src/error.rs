@@ -7,7 +7,42 @@ use std::fmt;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+/// Version of a reason event without a sub-reason.
 pub const REASON_SCHEMA_VERSION: u16 = 1;
+/// Version of a reason event that carries `reason.subcode` (ADR-031); only
+/// `E_ATTESTATION_INVALID` has one.
+pub const REASON_SCHEMA_VERSION_SUBCODE: u16 = 2;
+
+/// The sub-reasons of `E_ATTESTATION_INVALID` (ADR-030 point 7), the only
+/// values `reason.subcode` may take.
+pub const ATTESTATION_SUBCODES: [&str; 26] = [
+    "bundle_too_large",
+    "too_many_bundles",
+    "bundle_malformed",
+    "bundle_unsupported",
+    "signature_invalid",
+    "artifact_digest_mismatch",
+    "certificate_untrusted",
+    "certificate_time",
+    "sct_invalid",
+    "tlog_inclusion",
+    "tlog_checkpoint",
+    "tlog_promise",
+    "tlog_entry",
+    "timestamp_invalid",
+    "no_verified_time",
+    "identity_mismatch",
+    "repository_id_mismatch",
+    "owner_id_mismatch",
+    "release_mismatch",
+    "subject_mismatch",
+    "workflow_mismatch",
+    "ref_mismatch",
+    "commit_mismatch",
+    "runner_not_hosted",
+    "statement_invalid",
+    "trust_root_invalid",
+];
 
 /// Largest serialized reason event accepted by [`ReasonEvent::from_json`].
 pub const MAX_REASON_EVENT_JSON_BYTES: usize = 16 * 1024;
@@ -133,11 +168,21 @@ impl ObjectKind {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SafeValueError {
     Empty,
-    TooLong { maximum: usize },
+    TooLong {
+        maximum: usize,
+    },
     ControlCharacter,
     InvalidIdentifierCharacter,
     SuspectedSecret,
-    UnsupportedSchemaVersion { actual: u16 },
+    UnsupportedSchemaVersion {
+        actual: u16,
+    },
+    /// Not one of [`ATTESTATION_SUBCODES`].
+    UnknownSubcode,
+    /// A sub-reason with another code than `E_ATTESTATION_INVALID`.
+    SubcodeNotAllowed,
+    /// Version 1 with a sub-reason, or version 2 without one.
+    SubcodeVersionMismatch,
 }
 
 impl fmt::Display for SafeValueError {
@@ -153,6 +198,13 @@ impl fmt::Display for SafeValueError {
             Self::UnsupportedSchemaVersion { actual } => {
                 write!(formatter, "unsupported reason schema version {actual}")
             }
+            Self::UnknownSubcode => formatter.write_str("unknown reason subcode"),
+            Self::SubcodeNotAllowed => {
+                formatter.write_str("only E_ATTESTATION_INVALID carries a subcode")
+            }
+            Self::SubcodeVersionMismatch => formatter.write_str(
+                "a subcode needs reason schema version 2, and version 2 needs a subcode",
+            ),
         }
     }
 }
@@ -247,6 +299,49 @@ impl<'de> Deserialize<'de> for SafeIdentifier {
     }
 }
 
+/// A sub-reason of `E_ATTESTATION_INVALID`, one of [`ATTESTATION_SUBCODES`].
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct ReasonSubcode(&'static str);
+
+impl ReasonSubcode {
+    pub fn new(value: &str) -> Result<Self, SafeValueError> {
+        ATTESTATION_SUBCODES
+            .iter()
+            .find(|known| **known == value)
+            .map(|known| Self(known))
+            .ok_or(SafeValueError::UnknownSubcode)
+    }
+
+    pub const fn as_str(&self) -> &'static str {
+        self.0
+    }
+}
+
+impl fmt::Display for ReasonSubcode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.0)
+    }
+}
+
+impl Serialize for ReasonSubcode {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for ReasonSubcode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::new(&value).map_err(D::Error::custom)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObjectReference {
@@ -274,6 +369,8 @@ pub struct Reason {
     code: ReasonCode,
     object: ObjectReference,
     message: SafeText,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    subcode: Option<ReasonSubcode>,
 }
 
 impl Reason {
@@ -282,7 +379,27 @@ impl Reason {
             code,
             object,
             message,
+            subcode: None,
         }
+    }
+
+    /// `E_ATTESTATION_INVALID` with its sub-reason (ADR-030 point 7,
+    /// ADR-031).
+    pub const fn attestation_invalid(
+        object: ObjectReference,
+        message: SafeText,
+        subcode: ReasonSubcode,
+    ) -> Self {
+        Self {
+            code: ReasonCode::EAttestationInvalid,
+            object,
+            message,
+            subcode: Some(subcode),
+        }
+    }
+
+    pub const fn subcode(&self) -> Option<ReasonSubcode> {
+        self.subcode
     }
 
     pub const fn code(&self) -> ReasonCode {
@@ -325,9 +442,16 @@ pub struct ReasonEvent {
 }
 
 impl ReasonEvent {
+    /// Version 2 when the reason carries a sub-reason, otherwise version 1,
+    /// so every event without one stays readable by a version 1 reader.
     pub const fn new(reason: Reason) -> Self {
+        let schema_version = if reason.subcode.is_some() {
+            REASON_SCHEMA_VERSION_SUBCODE
+        } else {
+            REASON_SCHEMA_VERSION
+        };
         Self {
-            schema_version: REASON_SCHEMA_VERSION,
+            schema_version,
             event: EventKind::Reason,
             reason,
         }
@@ -370,10 +494,16 @@ impl TryFrom<ReasonEventWire> for ReasonEvent {
     type Error = SafeValueError;
 
     fn try_from(wire: ReasonEventWire) -> Result<Self, Self::Error> {
-        if wire.schema_version != REASON_SCHEMA_VERSION {
-            return Err(SafeValueError::UnsupportedSchemaVersion {
-                actual: wire.schema_version,
-            });
+        let with_subcode = match wire.schema_version {
+            REASON_SCHEMA_VERSION => false,
+            REASON_SCHEMA_VERSION_SUBCODE => true,
+            actual => return Err(SafeValueError::UnsupportedSchemaVersion { actual }),
+        };
+        if wire.reason.subcode.is_some() != with_subcode {
+            return Err(SafeValueError::SubcodeVersionMismatch);
+        }
+        if with_subcode && wire.reason.code != ReasonCode::EAttestationInvalid {
+            return Err(SafeValueError::SubcodeNotAllowed);
         }
 
         Ok(Self {

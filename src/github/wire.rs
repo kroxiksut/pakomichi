@@ -17,6 +17,7 @@ use super::identity::{
     AssetId, IdentityError, OwnerId, OwnerLogin, ReleaseId, RepositoryId, RepositoryIdentity,
     RepositoryName,
 };
+use super::release_pin::GitObjectId;
 use crate::cas::Sha256Digest;
 
 /// Largest response body accepted by the parsers and the default client
@@ -344,6 +345,111 @@ fn is_utc_timestamp(value: &str) -> bool {
             19 => *byte == b'Z',
             _ => byte.is_ascii_digit(),
         })
+}
+
+/// Longest `ref` accepted: `refs/tags/` plus the longest tag.
+const MAX_REF_BYTES: usize = "refs/tags/".len() + MAX_TEXT_BYTES;
+
+/// What a tag reference or an annotated tag points to. Trees and blobs are
+/// refused: a release tag that names neither is not usable evidence.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum TagObjectKind {
+    Commit,
+    /// An annotated tag object.
+    Tag,
+}
+
+/// `GET .../git/ref/tags/{tag}` exactly as returned, never peeled
+/// (specification point 5): for an annotated tag `object` is the tag object,
+/// for a lightweight tag it is the commit.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TagRef {
+    /// `refs/tags/{tag}`; the client checks it against the requested tag.
+    pub ref_name: String,
+    pub object: GitObjectId,
+    pub kind: TagObjectKind,
+}
+
+/// `GET .../git/tags/{sha}`: one annotated tag object.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AnnotatedTag {
+    pub sha: GitObjectId,
+    pub tag: String,
+    pub target: GitObjectId,
+    pub target_kind: TagObjectKind,
+}
+
+#[derive(Deserialize)]
+struct TagRefWire {
+    #[serde(rename = "ref")]
+    ref_name: String,
+    object: GitObjectWire,
+}
+
+#[derive(Deserialize)]
+struct AnnotatedTagWire {
+    sha: String,
+    tag: String,
+    object: GitObjectWire,
+}
+
+#[derive(Deserialize)]
+struct GitObjectWire {
+    sha: String,
+    #[serde(rename = "type")]
+    kind: String,
+}
+
+/// Parses `GET .../git/ref/tags/{tag}`. An array (GitHub's prefix-matching
+/// listing shape) is refused as a JSON error.
+pub fn parse_tag_ref(body: &[u8]) -> Result<TagRef, WireError> {
+    let wire: TagRefWire = decode(body)?;
+    let ref_name = wire.ref_name;
+    if ref_name.len() > MAX_REF_BYTES
+        || ref_name.chars().any(char::is_control)
+        || ref_name
+            .strip_prefix("refs/tags/")
+            .is_none_or(str::is_empty)
+    {
+        return Err(WireError::Invalid {
+            field: "ref",
+            problem: "not a tag reference",
+        });
+    }
+    Ok(TagRef {
+        ref_name,
+        object: object_id("object.sha", &wire.object.sha)?,
+        kind: object_kind(&wire.object.kind)?,
+    })
+}
+
+/// Parses `GET .../git/tags/{sha}`.
+pub fn parse_tag_object(body: &[u8]) -> Result<AnnotatedTag, WireError> {
+    let wire: AnnotatedTagWire = decode(body)?;
+    Ok(AnnotatedTag {
+        sha: object_id("sha", &wire.sha)?,
+        tag: checked_text("tag", wire.tag)?,
+        target: object_id("object.sha", &wire.object.sha)?,
+        target_kind: object_kind(&wire.object.kind)?,
+    })
+}
+
+fn object_id(field: &'static str, hex: &str) -> Result<GitObjectId, WireError> {
+    GitObjectId::from_hex(hex).map_err(|_| WireError::Invalid {
+        field,
+        problem: "not 40 lowercase hexadecimal digits",
+    })
+}
+
+fn object_kind(kind: &str) -> Result<TagObjectKind, WireError> {
+    match kind {
+        "commit" => Ok(TagObjectKind::Commit),
+        "tag" => Ok(TagObjectKind::Tag),
+        _ => Err(WireError::Invalid {
+            field: "object.type",
+            problem: "neither a commit nor a tag",
+        }),
+    }
 }
 
 /// The `message` of an error body, used only to recognise a secondary rate

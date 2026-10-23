@@ -195,3 +195,26 @@ Guaranteed by the native manager: only what each documented primitive selects at
 ## Negative cases
 
 N-008: resolvable on every platform (expected at the Pakomichi level: Hold). N-009 without a provider: unresolvable on every platform (Hold). N-010 equal version with different SHA: no automatic switch during `upgrade` on any platform, but instance switches through `--reinstall`/`distro-sync` and source order (see above). No artificial epoch was introduced, no third-party or distribution source was changed or disabled, global `gpgcheck` stayed on, and the development host's package sources were not touched. On the shared targets the distribution sources were only hidden for the duration of a run, and afterwards each target had no R-001 package, source, key, or `/etc/hosts` entry left.
+
+## Addendum (2026-10-22, P3-002a): `Pin: release` on one loopback host
+
+ADR-022 point 3 required one check that R-001 did not make: R-001 served every source under its own host name, while ADR-007 serves every logical repository from one loopback host. Harness: `research/p3-002a/` (`build.sh` in the R-001 DEB builder with the R-001 TEST ONLY keys; `run.ps1` for WSL targets recreated from the digest-pinned R-001 images; `run-remote.sh` for a shared target). Raw logs: `.research-local/p3-002a/runs/`.
+
+Four signed flat repositories are served by `repo-server.py` from `http://127.0.0.1:18082/p3002a/<repo>/`. **strict** (`Origin: Pakomichi TEST ONLY`, `Label: pakomichi-p3002a-strict`) has `sampleapp 1.0-1`, which depends on `sampleapp-helper (>= 1.0)`, and `sampleapp-helper 1.0-1`. **pinned** has the same Origin and `Label: pakomichi-p3002a-pinned`, as a second provenance level of one source would (ADR-027 point 6), and offers `sampleapp 1.2-1`. **other** is another publisher with `sampleapp 1.1-1` and `sampleapp-helper 1.1-1`. **distro** stands for a distribution update with `sampleapp-helper 1.3-1`. The family is installed from strict alone; then all four sources are listed, strict last so that source order cannot help it, and the distribution's ordinary update command runs with `-y`. APT sees only these sources during the run, as on the R-001 shared targets. Every cell starts from a purged state.
+
+| Preferences for `sampleapp sampleapp-helper` | Priorities after `apt-get update` | Result of every ordinary command |
+|---|---|---|
+| none (control) | all 500 | `sampleapp 1.2-1` from pinned, `sampleapp-helper 1.3-1` from distro: the publisher changes |
+| `Pin: release o=Pakomichi TEST ONLY,l=pakomichi-p3002a-strict` 990 | strict 1.0-1 at 990, others 500 | both stay at 1.0-1 from strict; nothing is downloaded after the installation |
+| `Pin: release o=Pakomichi TEST ONLY` 990 (diagnostic) | strict 1.0-1 and pinned 1.2-1 at 990 | `sampleapp 1.2-1` from pinned: the Origin alone does not tell two levels apart |
+
+The same three outcomes, with the same priorities, were observed on:
+
+- Debian 12 (APT 2.6.1, dpkg 1.21.23) under `apt upgrade` and `apt full-upgrade`;
+- Ubuntu 24.04 (APT 2.8.3) under `apt upgrade` and `apt full-upgrade`;
+- Debian 13 (APT 3.0.3) under `apt upgrade` and `apt full-upgrade`;
+- Astra Linux 1.8.6 (APT 2.6.1.astra3) under `apt-get dist-upgrade` and `apt full-upgrade`. This is the owner's VM under an exclusive lease. Its own `astra.pin.pref` stayed in place, and afterwards no P3-002a package, source, key, preference, or list was left.
+
+Every command exited 0. The server log shows which repository each package file came from.
+
+**Conclusion:** `Pin: release o=…,l=…` with `Pin-Priority: 990` holds the publisher of every activated family member when all logical repositories share one host and port, under the ordinary update command of each tested APT distribution. The `l=` term is required whenever two logical repositories can share an Origin. The control without a pin changes the publisher, as R-001 found.

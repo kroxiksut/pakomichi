@@ -18,11 +18,15 @@
 //!   `snapshot` rows from them.
 //!
 //! Building the APT and RPM indexes and signing them belong to the index
-//! publishers (P3-001, P3-003); serving belongs to the reader (P3-005). An
-//! empty DNF generation after the maximum freshness (ADR-024 point 3) is an
-//! ordinary generation whose indexes list no packages.
+//! publishers (P3-001, P3-003). Serving belongs to the repository reader
+//! (P3-005a), which looks generations up through `PublishReader` without
+//! taking the publisher lock. An empty DNF generation after the maximum
+//! freshness (ADR-024 point 3) is an ordinary generation whose indexes list
+//! no packages.
 
 mod manifest;
+#[cfg(unix)]
+mod reader;
 #[cfg(unix)]
 mod store;
 
@@ -30,6 +34,8 @@ pub use manifest::{
     Backend, Entry, GenerationId, GenerationMeta, MAX_ENTRIES, Manifest, ManifestError, PathClass,
     RepoName, RepoPath, SourceId, Timestamp, check_immutable_paths, classify,
 };
+#[cfg(unix)]
+pub use reader::PublishReader;
 #[cfg(unix)]
 pub use store::{
     GenerationInfo, GenerationStore, PublishError, ReconcileReport, Recovery, snapshot_id,

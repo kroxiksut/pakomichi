@@ -32,5 +32,20 @@ exactly its release, recordable and attachable only while the source has
 and neither is replaced once attached. `forge_repository.trust_floor` is the
 ratchet: it only rises, from `pinned` to `attested` to `strict`.
 
+Migration 0002 keeps the confirmed owner IDs of a source in
+`repository_owner_confirmation`. A transfer changes the owner ID, and
+attestations made earlier keep the owner ID of their time (R-003), so every
+confirmed owner stays acceptable. Each row is one append-only confirmation:
+
+- adding a source records a `pinned` row for its owner, and sources that
+  existed before the migration get one from `first_seen_at`;
+- an administrator's `transfer` confirmation moves
+  `forge_repository.owner_id` to the confirmed owner.
+
+The owner ID changes in no other way, so the current owner is always the
+owner of the source's latest confirmation. A move back to an earlier owner is
+recorded as a transfer again. Like `trust_evidence`, confirmations keep their
+source row: a source that has confirmations cannot be deleted.
+
 The prose in this file is covered by the documentation terms described in
 `LICENSING.md`; SQL and other code-like material use `MIT OR Apache-2.0`.

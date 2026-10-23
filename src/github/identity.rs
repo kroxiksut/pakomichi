@@ -8,7 +8,13 @@
 //! receives a new ID. The first resolution pins both IDs; every later
 //! observation is compared with the pin and classified by
 //! [`PinnedRepository::compare`].
+//!
+//! A transfer changes the owner ID, but attestations made before it keep the
+//! owner ID of their time (R-003 steps 4 and 5, probe case T3). The pin
+//! therefore keeps every owner ID the administrator confirmed: confirming a
+//! transfer adds the new ID and never removes an earlier one.
 
+use std::collections::BTreeSet;
 use std::fmt;
 
 use crate::error::{ObjectReference, Reason, ReasonCode, SafeText, SafeValueError};
@@ -226,32 +232,69 @@ impl RepositoryIdentity {
     }
 }
 
-/// The identity recorded when a source was added (`forge_repository`).
+/// The identity recorded when a source was added (`forge_repository`),
+/// together with every owner ID the administrator has confirmed for it.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PinnedRepository(RepositoryIdentity);
+pub struct PinnedRepository {
+    current: RepositoryIdentity,
+    /// Always contains `current.owner_id`; only grows.
+    accepted_owner_ids: BTreeSet<OwnerId>,
+}
 
 impl PinnedRepository {
     /// The first resolution pins the repository ID and owner ID.
-    pub const fn pin(identity: RepositoryIdentity) -> Self {
-        Self(identity)
+    pub fn pin(identity: RepositoryIdentity) -> Self {
+        Self::restore(identity, [])
     }
 
+    /// Rebuilds a stored pin: the current identity plus the owner IDs
+    /// confirmed before earlier transfers. The current owner ID is always
+    /// accepted, whatever the stored list says.
+    pub fn restore(
+        current: RepositoryIdentity,
+        earlier_owner_ids: impl IntoIterator<Item = OwnerId>,
+    ) -> Self {
+        let mut accepted_owner_ids: BTreeSet<OwnerId> = earlier_owner_ids.into_iter().collect();
+        accepted_owner_ids.insert(current.owner_id);
+        Self {
+            current,
+            accepted_owner_ids,
+        }
+    }
+
+    /// The identity as last accepted: current owner login, name, and IDs.
     pub fn identity(&self) -> &RepositoryIdentity {
-        &self.0
+        &self.current
     }
 
     pub const fn repository_id(&self) -> RepositoryId {
-        self.0.repository_id
+        self.current.repository_id
     }
 
+    /// The owner ID the repository has now. Attestations may carry any of
+    /// [`Self::accepted_owner_ids`].
     pub const fn owner_id(&self) -> OwnerId {
-        self.0.owner_id
+        self.current.owner_id
+    }
+
+    /// Every confirmed owner ID in ascending order, the current one included.
+    pub fn accepted_owner_ids(&self) -> impl ExactSizeIterator<Item = OwnerId> + '_ {
+        self.accepted_owner_ids.iter().copied()
+    }
+
+    /// Whether an owner ID from a verified attestation belongs to this
+    /// source: the current owner or an owner confirmed before a transfer.
+    /// The repository ID must still be checked separately and first.
+    pub fn accepts_owner(&self, owner_id: OwnerId) -> bool {
+        self.accepted_owner_ids.contains(&owner_id)
     }
 
     /// Classifies a later observation. The repository ID is compared first,
-    /// so a replacement is never reported as a rename or transfer.
+    /// so a replacement is never reported as a rename or transfer. Any owner
+    /// ID other than the current one is a transfer, even one confirmed
+    /// earlier: moving back is still a change of control.
     pub fn compare(&self, observed: &RepositoryIdentity) -> IdentityOutcome {
-        let pinned = &self.0;
+        let pinned = &self.current;
         if observed.repository_id != pinned.repository_id {
             return IdentityOutcome::Replaced {
                 expected: pinned.repository_id,
@@ -284,10 +327,43 @@ impl PinnedRepository {
             IdentityOutcome::Renamed {
                 previous_url,
                 current,
-            } if current.repository_id == self.0.repository_id
-                && current.owner_id == self.0.owner_id =>
+            } if current.repository_id == self.current.repository_id
+                && current.owner_id == self.current.owner_id =>
             {
-                Ok((Self(current), previous_url))
+                let accepted_owner_ids = self.accepted_owner_ids.clone();
+                Ok((
+                    Self {
+                        current,
+                        accepted_owner_ids,
+                    },
+                    previous_url,
+                ))
+            }
+            other => Err(other),
+        }
+    }
+
+    /// Applies a transfer that the administrator has confirmed explicitly
+    /// (ADR-030 point 5; never an automatic answer). The new owner ID is
+    /// added to the accepted set and the earlier ones stay, so releases
+    /// attested before the transfer still verify. Only a transfer of this
+    /// very repository from its current owner is applied; any other outcome
+    /// is returned unchanged as the error.
+    pub fn confirm_transfer(&self, outcome: IdentityOutcome) -> Result<Self, IdentityOutcome> {
+        match outcome {
+            IdentityOutcome::Transferred {
+                previous_owner_id,
+                current,
+            } if current.repository_id == self.current.repository_id
+                && previous_owner_id == self.current.owner_id
+                && current.owner_id != self.current.owner_id =>
+            {
+                let mut accepted_owner_ids = self.accepted_owner_ids.clone();
+                accepted_owner_ids.insert(current.owner_id);
+                Ok(Self {
+                    current,
+                    accepted_owner_ids,
+                })
             }
             other => Err(other),
         }
@@ -416,6 +492,123 @@ mod tests {
             }
         );
         assert!(pinned.follow_rename(outcome).is_err());
+        Ok(())
+    }
+
+    /// The R-003 test repository: IDs as observed on 2026-10-22.
+    const ORIGINAL: u64 = 1_429_109_739;
+    const USER: u64 = 2_264_172;
+    const ORGANIZATION: u64 = 346_117_935;
+
+    fn r003_original() -> Result<PinnedRepository, IdentityError> {
+        Ok(PinnedRepository::pin(identity(
+            ORIGINAL,
+            USER,
+            "kroxiksut",
+            "pchi-test",
+        )?))
+    }
+
+    #[test]
+    fn r003_rename_keeps_the_pin_and_its_owner_set() -> Result<(), IdentityError> {
+        let pinned = r003_original()?;
+        let outcome = pinned.compare(&identity(ORIGINAL, USER, "kroxiksut", "pchi-test-renamed")?);
+        let Ok((renamed, previous_url)) = pinned.follow_rename(outcome) else {
+            panic!("a rename with the same IDs is followed");
+        };
+        assert_eq!(previous_url, "https://github.com/kroxiksut/pchi-test");
+        assert_eq!(
+            renamed.identity().full_name(),
+            "kroxiksut/pchi-test-renamed"
+        );
+        assert_eq!(
+            renamed.accepted_owner_ids().collect::<Vec<_>>(),
+            vec![OwnerId::new(USER)?]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn r003_new_repository_under_the_old_name_and_the_fork_are_replacements()
+    -> Result<(), IdentityError> {
+        let pinned = r003_original()?;
+        // Same owner ID as the pin: only the repository ID tells them apart.
+        for (repository, name) in [
+            (1_429_307_950, "pchi-test"),
+            (1_429_309_242, "pchi-test-fork"),
+        ] {
+            let outcome = pinned.compare(&identity(repository, USER, "kroxiksut", name)?);
+            assert_eq!(outcome.reason_code(), Some(ReasonCode::ERepoIdChanged));
+            assert!(pinned.confirm_transfer(outcome.clone()).is_err());
+            assert!(pinned.follow_rename(outcome).is_err());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn r003_confirmed_transfer_adds_the_new_owner_and_keeps_the_old_one()
+    -> Result<(), IdentityError> {
+        let pinned = r003_original()?;
+        let moved = identity(ORIGINAL, ORGANIZATION, "pchi-test-org", "pchi-test-renamed")?;
+        let outcome = pinned.compare(&moved);
+        assert_eq!(outcome.reason_code(), Some(ReasonCode::EOwnerTransfer));
+        assert!(!outcome.is_accepted());
+        // Before confirmation the new owner is not accepted.
+        assert!(!pinned.accepts_owner(OwnerId::new(ORGANIZATION)?));
+
+        let Ok(confirmed) = pinned.confirm_transfer(outcome) else {
+            panic!("a transfer of the pinned repository can be confirmed");
+        };
+        assert_eq!(confirmed.owner_id(), OwnerId::new(ORGANIZATION)?);
+        assert_eq!(confirmed.repository_id(), RepositoryId::new(ORIGINAL)?);
+        // Probe case T3: attestations made before the transfer carry the
+        // user's owner ID and must still be accepted.
+        assert!(confirmed.accepts_owner(OwnerId::new(USER)?));
+        assert!(confirmed.accepts_owner(OwnerId::new(ORGANIZATION)?));
+        assert_eq!(confirmed.compare(&moved), IdentityOutcome::Unchanged);
+        Ok(())
+    }
+
+    #[test]
+    fn moving_back_to_an_earlier_owner_is_still_a_transfer() -> Result<(), IdentityError> {
+        let pinned = PinnedRepository::restore(
+            identity(ORIGINAL, ORGANIZATION, "pchi-test-org", "pchi-test-renamed")?,
+            [OwnerId::new(USER)?],
+        );
+        let outcome = pinned.compare(&identity(ORIGINAL, USER, "kroxiksut", "pchi-test-renamed")?);
+        assert!(matches!(outcome, IdentityOutcome::Transferred { .. }));
+        assert_eq!(outcome.reason_code(), Some(ReasonCode::EOwnerTransfer));
+        Ok(())
+    }
+
+    #[test]
+    fn confirm_transfer_accepts_only_a_transfer_from_the_current_owner() -> Result<(), IdentityError>
+    {
+        let pinned = r003_original()?;
+        let unchanged = pinned.compare(pinned.identity());
+        assert_eq!(
+            pinned.confirm_transfer(unchanged),
+            Err(IdentityOutcome::Unchanged)
+        );
+        let renamed = pinned.compare(&identity(ORIGINAL, USER, "kroxiksut", "other")?);
+        assert!(pinned.confirm_transfer(renamed).is_err());
+        // An outcome computed against another pin is refused.
+        let stale = IdentityOutcome::Transferred {
+            previous_owner_id: OwnerId::new(99)?,
+            current: identity(ORIGINAL, ORGANIZATION, "pchi-test-org", "pchi-test")?,
+        };
+        assert!(pinned.confirm_transfer(stale).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn restore_always_accepts_the_current_owner() -> Result<(), IdentityError> {
+        let pinned =
+            PinnedRepository::restore(identity(ORIGINAL, USER, "kroxiksut", "pchi-test")?, []);
+        assert_eq!(pinned.accepted_owner_ids().len(), 1);
+        assert!(pinned.accepts_owner(OwnerId::new(USER)?));
+        assert!(!pinned.accepts_owner(OwnerId::new(ORGANIZATION)?));
+        assert_eq!(pinned, r003_original()?);
         Ok(())
     }
 

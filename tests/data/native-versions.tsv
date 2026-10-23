@@ -1,0 +1,111 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# Native version vectors shared by the Rust unit tests (src/family/version_tests.rs)
+# and the native tools (scripts/check-native-versions.py: dpkg --compare-versions,
+# python3-rpm rpm.labelCompare, rpm.ver, rpm.ds.Compare). Tab-separated.
+#
+# kind         left            right           expected
+# deb          version         version         < = >    dpkg version ordering
+# deb-invalid  version         -               error    dpkg refuses the version
+# deb-strict   version         -               error    dpkg only warns; Pakomichi refuses
+# rpm          segment         segment         < = >    rpmvercmp on one version field
+# rpm-evr      [E:]V[-R]       [E:]V[-R]       < = >    rpmverCmp
+# rpm-overlap  OP EVR          OP EVR          1 0      Provides (left) vs Requires (right)
+#
+# dpkg: Debian Policy 5.6.12 and dpkg lib/dpkg/t/t-version.c
+deb	1.0	1.0	=
+deb	1.0	1.00	=
+deb	1.0	1.0-0	=
+deb	0:1.0	1.0	=
+deb	1.0	2.0	<
+deb	1.2.3	1.2.10	<
+deb	1:0.1	2.0	>
+deb	1.0-1	1.0-2	<
+deb	1.0~rc1	1.0	<
+deb	1.0~~	1.0~~a	<
+deb	1.0~~a	1.0~	<
+deb	1.0~	1.0	<
+deb	1.0	1.0a	<
+deb	1.0+b1	1.0	>
+deb	1.0.1	1.0+b1	>
+deb	2.0a	2.0.	<
+deb	1.0-1ubuntu1	1.0-1	>
+deb	1.0-1~bpo12+1	1.0-1	<
+deb	7.6p2-4	7.6-0	>
+deb	1.0-1	1.0-1.1	<
+deb	a1	b1	<
+deb	1.0-a	1.0-1	>
+deb	2:1.0	1:9.9	>
+deb	1.0~rc1-1	1.0~rc2-1	<
+deb	0.35.4-1	0.35.10-1	<
+deb	10.4.0.0p1	10.4.0.0	>
+deb-invalid	1.0-	-	error
+deb-invalid	:1.0	-	error
+deb-invalid	a:1.0	-	error
+deb-invalid	1:	-	error
+deb-invalid	1.0 2	-	error
+deb-strict	1:1.0-1:2	-	error
+deb-strict	1.0_1	-	error
+deb-strict	1.0-a_b	-	error
+# RPM: rpm tests/rpmvercmp.at (rpm 4.16)
+rpm	1.0	1.0	=
+rpm	1.0	2.0	<
+rpm	2.0.1	2.0	>
+rpm	2.0.1a	2.0.1	>
+rpm	5.5p1	5.5p2	<
+rpm	5.5p10	5.5p1	>
+rpm	10xyz	10.1xyz	<
+rpm	xyz10	xyz10.1	<
+rpm	xyz.4	8	<
+rpm	2	xyz.4	>
+rpm	5.6p1	6.5p1	<
+rpm	6.0.rc1	6.0	>
+rpm	10b2	10a1	>
+rpm	1.0a	1.0aa	<
+rpm	10.0001	10.1	=
+rpm	10.0039	10.0001	>
+rpm	4.999.9	5.0	<
+rpm	20101122	20101121	>
+rpm	2_0	2.0	=
+rpm	a+	a_	=
+rpm	+a	_a	=
+rpm	+	_	=
+rpm	1.0~rc1	1.0	<
+rpm	1.0~rc1	1.0~rc2	<
+rpm	1.0~rc1~git123	1.0~rc1	<
+rpm	1.0^	1.0	>
+rpm	1.0^git1	1.0	>
+rpm	1.0^git1	1.0^git2	<
+rpm	1.0^git1	1.01	<
+rpm	1.0^20160101	1.0.1	<
+rpm	1.0^20160102	1.0^20160101^git1	>
+rpm	1.0~rc1^git1	1.0~rc1	>
+rpm	1.0^git1~pre	1.0^git1	<
+rpm	1.0.	1.0	=
+rpm	0.35.4	0.35.10	<
+rpm-evr	1:1.0-1	2.0-1	>
+rpm-evr	0:1.0-1	1.0-1	=
+rpm-evr	1.0-1	1.0-2	<
+rpm-evr	1.0-1.el9	1.0-1.fc44	<
+rpm-evr	1.0	1.0-1	<
+rpm-evr	2.0-1	1.0	>
+rpm-evr	1.0~rc1-1	1.0-1	<
+rpm-overlap	= 1.0-1	>= 1.0	1
+rpm-overlap	= 1.0-1	> 1.0	0
+rpm-overlap	= 1.0-1	= 1.0	1
+rpm-overlap	= 1.0-1	< 1.0	0
+rpm-overlap	= 1.0-1	<= 1.0	1
+rpm-overlap	= 1.0	= 1.0-1	1
+rpm-overlap	= 1.0-1	= 1.0-2	0
+rpm-overlap	= 1:1.0-1	>= 2.0	1
+rpm-overlap	= 1.0-1	>= 1:0.5	0
+rpm-overlap	= 0:1.0-1	= 1.0-1	1
+rpm-overlap	= 1.0~rc1-1	>= 1.0	0
+rpm-overlap	= 1.0^git1-1	> 1.0	1
+rpm-overlap	= 2.0-1	< 2.0	0
+rpm-overlap	= 1.9-1	< 2.0	1
+rpm-overlap	= 1.0-1.el9	= 1.0-1.el9	1
+rpm-overlap	>= 1.0	= 2.0	1
+rpm-overlap	<= 1.0	>= 2.0	0
+rpm-overlap	= 0.6-1	= 0.6-1	1
+rpm-overlap	= 0.7-1	= 0.6-1	0

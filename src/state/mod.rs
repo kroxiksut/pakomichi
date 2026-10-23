@@ -14,6 +14,8 @@
 //!   with an untrusted schema, applies the forward-only migrations, refuses
 //!   a database from a newer build, and backs up and restores through the
 //!   online backup API with the source validated first.
+//! - `owners` (Unix only): the confirmed owner IDs of a source (migration
+//!   0002, R-003); a recorded transfer confirmation moves the current owner.
 //!
 //! The Windows development host has no system SQLite to link against, and
 //! ADR-020 forbids the bundled library, so the owner is built and tested on
@@ -22,9 +24,15 @@
 mod floor;
 #[cfg(unix)]
 mod owner;
+#[cfg(unix)]
+mod owners;
+#[cfg(all(test, unix))]
+mod test_support;
 
 pub use floor::{
     JSON_FUNCTION, MIN_SQLITE_VERSION, NEWER_THAN_FLOOR, format_version, newer_features,
 };
 #[cfg(unix)]
 pub use owner::{SCHEMA_VERSION, StateError, StateOwner, check_sqlite_version};
+#[cfg(unix)]
+pub use owners::{OwnerConfirmation, OwnerConfirmationKind};

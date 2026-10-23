@@ -12,7 +12,7 @@
 use std::fmt;
 
 /// The package ecosystem of the target system.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Ecosystem {
     Deb,
     Rpm,

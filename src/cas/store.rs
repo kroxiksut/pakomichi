@@ -135,6 +135,43 @@ impl Read for VerifiedObject {
     }
 }
 
+/// Read-only access to the objects of a store, for the repository reader.
+///
+/// It takes no lock and never writes: it cannot clean staging, quarantine a
+/// corrupt object, or collect garbage; those belong to the single writer
+/// ([`Store`]). A corrupt object is reported, not moved.
+#[derive(Debug)]
+pub struct ObjectReader {
+    objects: PathBuf,
+}
+
+impl ObjectReader {
+    /// Opens an existing store for reading. The root and `objects/` must be
+    /// real directories that neither group nor others can write.
+    pub fn open(root: &Path) -> Result<Self, CasError> {
+        check_dir(root)?;
+        let objects = root.join(OBJECTS);
+        check_dir(&objects)?;
+        Ok(Self { objects })
+    }
+
+    /// Opens `expected` and checks its size and, with
+    /// [`Verification::Full`], its SHA-256 before returning it, positioned
+    /// at the first byte. The open does not follow a symlink and does not
+    /// block on a FIFO.
+    pub fn open_object(
+        &self,
+        expected: ExpectedObject,
+        verification: Verification,
+    ) -> Result<VerifiedObject, CasError> {
+        open_verified(
+            &self.objects.join(expected.sha256.to_hex()),
+            expected,
+            verification,
+        )
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ScrubReport {
     pub verified: usize,
@@ -370,34 +407,7 @@ impl Store {
         expected: ExpectedObject,
         verification: Verification,
     ) -> Result<VerifiedObject, CasError> {
-        let path = self.object_path(&expected.sha256);
-        let mut file = open_entry(&path, &expected.sha256)?;
-        let size = file
-            .metadata()
-            .map_err(|error| CasError::io("stat", &path, error))?
-            .len();
-        if size != expected.size {
-            return Err(CasError::SizeMismatch {
-                expected: expected.size,
-                actual: size,
-            });
-        }
-        if verification == Verification::Full {
-            let (actual, length) =
-                hash_reader(&mut file).map_err(|error| CasError::io("read", &path, error))?;
-            if actual != expected.sha256 || length != size {
-                return Err(CasError::CorruptObject {
-                    digest: expected.sha256,
-                });
-            }
-            file.seek(SeekFrom::Start(0))
-                .map_err(|error| CasError::io("seek", &path, error))?;
-        }
-        Ok(VerifiedObject {
-            file,
-            digest: expected.sha256,
-            size,
-        })
+        open_verified(&self.object_path(&expected.sha256), expected, verification)
     }
 
     /// Fully verifies one object; a corrupt or unsafe entry is moved to
@@ -805,6 +815,41 @@ fn check_dir(path: &Path) -> Result<(), CasError> {
         }),
         None => Ok(()),
     }
+}
+
+/// Opens the object at `path` and checks it against `expected`.
+fn open_verified(
+    path: &Path,
+    expected: ExpectedObject,
+    verification: Verification,
+) -> Result<VerifiedObject, CasError> {
+    let mut file = open_entry(path, &expected.sha256)?;
+    let size = file
+        .metadata()
+        .map_err(|error| CasError::io("stat", path, error))?
+        .len();
+    if size != expected.size {
+        return Err(CasError::SizeMismatch {
+            expected: expected.size,
+            actual: size,
+        });
+    }
+    if verification == Verification::Full {
+        let (actual, length) =
+            hash_reader(&mut file).map_err(|error| CasError::io("read", path, error))?;
+        if actual != expected.sha256 || length != size {
+            return Err(CasError::CorruptObject {
+                digest: expected.sha256,
+            });
+        }
+        file.seek(SeekFrom::Start(0))
+            .map_err(|error| CasError::io("seek", path, error))?;
+    }
+    Ok(VerifiedObject {
+        file,
+        digest: expected.sha256,
+        size,
+    })
 }
 
 /// Opens an object entry for reading: no symlink is followed, a FIFO does

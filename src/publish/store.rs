@@ -18,7 +18,7 @@
 
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -27,11 +27,10 @@ use super::manifest::{
     Backend, Entry, GenerationId, GenerationMeta, Manifest, ManifestError, PathClass, RepoName,
     RepoPath, SourceId, check_immutable_paths,
 };
+pub use super::reader::GenerationInfo;
+use super::reader::{PublishReader, read_small, unsafe_entry, within_window};
 use crate::cas::{CasError, ExpectedObject, GcRoots, Store as CasStore};
 use crate::state::{StateError, StateOwner};
-
-/// Largest manifest file read back.
-const MAX_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
 
 /// Why publishing, reading, or reconciling generations failed.
 #[derive(Debug)]
@@ -127,14 +126,6 @@ pub struct Recovery {
     pub failed: Vec<(RepoName, GenerationId)>,
 }
 
-/// One published generation of a repository.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct GenerationInfo {
-    pub id: GenerationId,
-    /// When the next generation replaced it; `None` for the current one.
-    pub retired_at: Option<SystemTime>,
-}
-
 /// What `reconcile` wrote.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ReconcileReport {
@@ -148,6 +139,7 @@ pub struct ReconcileReport {
 /// The single writer of the publish root.
 pub struct GenerationStore {
     root: PathBuf,
+    reader: PublishReader,
     _lock: File,
 }
 
@@ -184,6 +176,7 @@ impl GenerationStore {
         }
         let store = Self {
             root: root.to_owned(),
+            reader: PublishReader::uncached(root),
             _lock: lock,
         };
         let mut recovery = Recovery::default();
@@ -212,11 +205,11 @@ impl GenerationStore {
     }
 
     fn repo_dir(&self, repo: &RepoName) -> PathBuf {
-        self.root.join("repos").join(repo.as_str())
+        self.reader.repo_dir(repo)
     }
 
     fn generations_dir(&self, repo: &RepoName) -> PathBuf {
-        self.repo_dir(repo).join("generations")
+        self.reader.generations_dir(repo)
     }
 
     fn ids_path(&self, source: &SourceId, backend: Backend) -> PathBuf {
@@ -225,81 +218,30 @@ impl GenerationStore {
             .join(format!("{}.{}", source.as_str(), backend.as_str()))
     }
 
+    /// The read-only view the repository reader also uses.
+    pub fn reader(&self) -> &PublishReader {
+        &self.reader
+    }
+
     /// Every repository with a directory in the store.
     pub fn repos(&self) -> Result<Vec<RepoName>, PublishError> {
-        let mut repos = Vec::new();
-        for entry in fs::read_dir(self.root.join("repos"))? {
-            let entry = entry?;
-            let name = entry.file_name();
-            let Some(name) = name.to_str().and_then(|name| RepoName::new(name).ok()) else {
-                return Err(unsafe_entry(&entry.path(), "not a repository name"));
-            };
-            if !entry.file_type()?.is_dir() {
-                return Err(unsafe_entry(&entry.path(), "not a directory"));
-            }
-            repos.push(name);
-        }
-        repos.sort();
-        Ok(repos)
+        self.reader.repos()
     }
 
     /// The current generation of `repo`, if it has one.
     pub fn current(&self, repo: &RepoName) -> Result<Option<GenerationId>, PublishError> {
-        let path = self.repo_dir(repo).join("current");
-        let text = match read_small(&path, 32) {
-            Ok(text) => text,
-            Err(PublishError::Io(error)) if error.kind() == io::ErrorKind::NotFound => {
-                return Ok(None);
-            }
-            Err(error) => return Err(error),
-        };
-        text.strip_suffix('\n')
-            .and_then(|number| number.parse::<u64>().ok())
-            .filter(|number| number.to_string() == text.trim_end())
-            .and_then(GenerationId::new)
-            .map(Some)
-            .ok_or_else(|| unsafe_entry(&path, "invalid current pointer"))
+        self.reader.current(repo)
     }
 
     /// Manifest files of `repo`: `(id, failed)`, ascending.
     fn manifest_files(&self, repo: &RepoName) -> Result<Vec<(GenerationId, bool)>, PublishError> {
-        let directory = self.generations_dir(repo);
-        let mut files = Vec::new();
-        let entries = match fs::read_dir(&directory) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(files),
-            Err(error) => return Err(error.into()),
-        };
-        for entry in entries {
-            let entry = entry?;
-            let name = entry.file_name();
-            let parsed = name.to_str().and_then(|name| {
-                let (number, failed) = match name.split_once('.') {
-                    Some((number, "manifest")) => (number, false),
-                    Some((number, "failed")) => (number, true),
-                    _ => return None,
-                };
-                let id = number.parse::<u64>().ok().and_then(GenerationId::new)?;
-                (id.to_string() == number).then_some((id, failed))
-            });
-            match parsed {
-                Some(file) if entry.file_type()?.is_file() => files.push(file),
-                _ => {
-                    return Err(unsafe_entry(
-                        &entry.path(),
-                        "unexpected entry in generations",
-                    ));
-                }
-            }
-        }
-        files.sort();
-        Ok(files)
+        self.reader.manifest_files(repo)
     }
 
     /// Reads and checks one manifest: it must parse and name its own
     /// repository and generation.
     pub fn load(&self, repo: &RepoName, id: GenerationId) -> Result<Manifest, PublishError> {
-        self.load_file(repo, id, false)
+        self.reader.load_file(repo, id, false)
     }
 
     fn load_file(
@@ -308,50 +250,13 @@ impl GenerationStore {
         id: GenerationId,
         failed: bool,
     ) -> Result<Manifest, PublishError> {
-        let suffix = if failed { "failed" } else { "manifest" };
-        let path = self.generations_dir(repo).join(format!("{id}.{suffix}"));
-        let text = match read_small(&path, MAX_MANIFEST_BYTES) {
-            Ok(text) => text,
-            Err(PublishError::Io(error)) if error.kind() == io::ErrorKind::NotFound => {
-                return Err(PublishError::UnknownGeneration);
-            }
-            Err(error) => return Err(error),
-        };
-        let manifest = Manifest::parse(&text)
-            .map_err(|_| PublishError::CorruptManifest { path: path.clone() })?;
-        if manifest.meta.repo != *repo || manifest.generation != id {
-            return Err(PublishError::CorruptManifest { path });
-        }
-        Ok(manifest)
+        self.reader.load_file(repo, id, failed)
     }
 
     /// Published generations of `repo` (current and retained), ascending,
-    /// with their retirement times: a generation retires when the next one
-    /// becomes current, at that one's creation time.
+    /// with their retirement times.
     pub fn generations(&self, repo: &RepoName) -> Result<Vec<GenerationInfo>, PublishError> {
-        let Some(current) = self.current(repo)? else {
-            return Ok(Vec::new());
-        };
-        let published: Vec<GenerationId> = self
-            .manifest_files(repo)?
-            .into_iter()
-            .filter(|(id, failed)| !failed && *id <= current)
-            .map(|(id, _)| id)
-            .collect();
-        let mut infos = Vec::with_capacity(published.len());
-        for (index, id) in published.iter().enumerate() {
-            let retired_at = match published.get(index + 1) {
-                Some(next) => {
-                    Some(UNIX_EPOCH + Duration::from_secs(self.load(repo, *next)?.created_at))
-                }
-                None => None,
-            };
-            infos.push(GenerationInfo {
-                id: *id,
-                retired_at,
-            });
-        }
-        Ok(infos)
+        self.reader.generations(repo)
     }
 
     /// Publishes a new generation of `meta.repo` and makes it current.
@@ -445,10 +350,8 @@ impl GenerationStore {
         Ok(next)
     }
 
-    /// Looks a path up the way the repository reader serves it: a mutable
-    /// path only from the current generation; a content-addressed path from
-    /// the current generation or any retained one inside the window, newest
-    /// first (R-004 G2, G5).
+    /// Looks a path up the way the repository reader serves it (see
+    /// [`PublishReader::resolve`]).
     pub fn resolve(
         &self,
         repo: &RepoName,
@@ -456,20 +359,7 @@ impl GenerationStore {
         now: SystemTime,
         retention: Duration,
     ) -> Result<Option<(GenerationId, Entry)>, PublishError> {
-        let generations = self.generations(repo)?;
-        for (newest, info) in generations.iter().rev().enumerate() {
-            if !within_window(info.retired_at, now, retention) {
-                break;
-            }
-            let manifest = self.load(repo, info.id)?;
-            if let Some(entry) = manifest.get(path) {
-                if newest > 0 && entry.class == PathClass::Mutable {
-                    return Ok(None);
-                }
-                return Ok(Some((info.id, entry.clone())));
-            }
-        }
-        Ok(None)
+        self.reader.resolve(repo, path, now, retention)
     }
 
     /// The GC roots of every repository: the current generation and the
@@ -650,26 +540,10 @@ fn signature_digest(manifest: &Manifest) -> Option<String> {
         .map(|entry| entry.object.sha256.to_hex())
 }
 
-fn within_window(retired_at: Option<SystemTime>, now: SystemTime, retention: Duration) -> bool {
-    match retired_at {
-        None => true,
-        Some(retired) => retired
-            .checked_add(retention)
-            .is_none_or(|expiry| expiry > now),
-    }
-}
-
 fn path_name(path: &Path) -> String {
     path.file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default()
-}
-
-fn unsafe_entry(path: &Path, problem: &'static str) -> PublishError {
-    PublishError::UnsafeEntry {
-        path: path.to_owned(),
-        problem,
-    }
 }
 
 /// Creates `path` as a 0750 directory, or checks an existing one: a real
@@ -693,30 +567,6 @@ fn ensure_dir(path: &Path) -> Result<(), PublishError> {
         }
         Err(error) => Err(error.into()),
     }
-}
-
-/// Reads a small regular file without following a symlink.
-fn read_small(path: &Path, limit: u64) -> Result<String, PublishError> {
-    let file = OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
-        .open(path)
-        .map_err(|error| {
-            if error.raw_os_error() == Some(libc::ELOOP) {
-                unsafe_entry(path, "symlink")
-            } else {
-                PublishError::Io(error)
-            }
-        })?;
-    if !file.metadata()?.file_type().is_file() {
-        return Err(unsafe_entry(path, "not a regular file"));
-    }
-    let mut text = String::new();
-    file.take(limit + 1).read_to_string(&mut text)?;
-    if text.len() as u64 > limit {
-        return Err(unsafe_entry(path, "too large"));
-    }
-    Ok(text)
 }
 
 fn sync_dir(path: &Path) -> io::Result<()> {

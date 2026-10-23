@@ -1,0 +1,28 @@
+case	description	gh_exit	gh	probe	agreement	gh_note
+P1	netwatch x86_64.rpm	0	accept	accept	same	
+P2	netwatch amd64.deb	0	accept	accept	same	
+P3	netwatch aarch64.rpm	0	accept	accept	same	
+P4	netwatch arm64.deb	0	accept	accept	same	
+P5	cli/cli SLSA provenance	0	accept	accept	same	
+P10	pchi-test SLSA provenance	0	accept	accept	same	
+O1	renamed repository: gh binds by name, probe by ID	1	reject	accept	differs	Error: verifying with issuer "sigstore.dev" 
+N1	changed byte	1	reject	reject	same	Error: verifying with issuer "sigstore.dev" 
+N3	bytes not in the release	1	reject	reject	same	Error: verifying with issuer "sigstore.dev" 
+N6	forged payload	1	reject	reject	same	Error: verifying with issuer "sigstore.dev" 
+N7	root without CAs	1	reject	reject	same	Error: failed to choose verifier based on provided bundle issuer: no custom verifier found for issuer "sigstore.dev" 
+N10	other repository (gh: by name)	1	reject	reject	same	Error: verifying with issuer "sigstore.dev" 
+N11	other owner (gh: by name)	1	reject	reject	same	Error: verifying with issuer "sigstore.dev" 
+N12	other workflow	1	reject	reject	same	Error: verifying with issuer "sigstore.dev" 
+N13	workflow prefix (GHSA-wjmr-j3rp-mh2g)	1	reject	reject	same	Error: verifying with issuer "sigstore.dev" 
+N14	workflow as regex (GHSA-mm27-mwq9-fr5g)	1	reject	reject	same	Error: verifying with issuer "sigstore.dev" 
+N15	other OIDC issuer	1	reject	reject	same	Error: expected Issuer to be https://token.actions.githubusercontent.com/pakomichi-r003, got https://token.actions.githubusercontent.com 
+N16	other ref	1	reject	reject	same	Error: expected SourceRepositoryRef to be refs/tags/v0.35.3, got refs/tags/v0.35.4 
+N17	ref in other case (GHSA-4mq3-hpgx-9cx8)	1	reject	reject	same	Error: expected SourceRepositoryRef to be refs/tags/V0.35.4, got refs/tags/v0.35.4 
+N18	other commit	1	reject	reject	same	Error: expected SourceRepositoryDigest to be 0000000000000000000000000000000000000000, got 9c249f576766a164108103cdd0da627a7f00229b 
+N28	inclusion proof hash changed	1	reject	reject	same	Error: verifying with issuer "sigstore.dev" 
+N29	checkpoint signature changed	1	reject	reject	same	Error: verifying with issuer "sigstore.dev" 
+N30	integratedTime moved	1	reject	reject	same	Error: verifying with issuer "sigstore.dev" 
+N31	log entry of the cli/cli bundle	1	reject	reject	same	Error: verifying with issuer "sigstore.dev" 
+N32	leaf certificate of the cli/cli bundle	1	reject	reject	same	Error: verifying with issuer "sigstore.dev" 
+N36b	CT log keys swapped in the root	1	reject	reject	same	Error: verifying with issuer "sigstore.dev" 
+N37	two DSSE signatures	1	reject	reject	same	Error: verifying with issuer "sigstore.dev" 

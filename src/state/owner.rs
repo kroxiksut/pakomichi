@@ -19,7 +19,7 @@ use crate::error::ReasonCode;
 
 /// The schema version this build writes; `PRAGMA user_version` after the
 /// last migration.
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 
 struct Migration {
     version: i64,
@@ -28,11 +28,18 @@ struct Migration {
 }
 
 /// Forward-only migrations in order (`migrations/README.md`).
-const MIGRATIONS: [Migration; 1] = [Migration {
-    version: 1,
-    name: "initial",
-    sql: include_str!("../../migrations/0001_initial.sql"),
-}];
+const MIGRATIONS: [Migration; 2] = [
+    Migration {
+        version: 1,
+        name: "initial",
+        sql: include_str!("../../migrations/0001_initial.sql"),
+    },
+    Migration {
+        version: 2,
+        name: "repository_owner_confirmation",
+        sql: include_str!("../../migrations/0002_repository_owner_confirmation.sql"),
+    },
+];
 
 /// Why the state database could not be opened, migrated, backed up, or
 /// restored. Messages carry no SQL text and no row data.
@@ -62,6 +69,11 @@ pub enum StateError {
     },
     /// The backup destination already exists.
     TargetExists,
+    /// The schema refused an owner confirmation (migration 0002); `rule`
+    /// is the refusing trigger's message.
+    OwnerConfirmationRefused {
+        rule: &'static str,
+    },
     Sqlite(rusqlite::Error),
     Io(io::Error),
 }
@@ -99,6 +111,9 @@ impl fmt::Display for StateError {
             }
             Self::InvalidDatabase { problem } => write!(formatter, "invalid database: {problem}"),
             Self::TargetExists => formatter.write_str("backup destination already exists"),
+            Self::OwnerConfirmationRefused { rule } => {
+                write!(formatter, "owner confirmation refused: {rule}")
+            }
             Self::Sqlite(error) => write!(formatter, "SQLite error: {error}"),
             Self::Io(error) => write!(formatter, "I/O error: {error}"),
         }

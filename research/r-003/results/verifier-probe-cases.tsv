@@ -1,0 +1,60 @@
+case	description	expected	verdict	reason	notes	exit	status	detail
+P1	netwatch x86_64.rpm Attested	PASS	PASS	-	timestamps:1,tlog:true	0	OK	-
+P2	netwatch amd64.deb Attested	PASS	PASS	-	timestamps:1,tlog:true	0	OK	-
+P3	netwatch aarch64.rpm Attested	PASS	PASS	-	timestamps:1,tlog:true	0	OK	-
+P4	netwatch arm64.deb Attested	PASS	PASS	-	timestamps:1,tlog:true	0	OK	-
+P5	cli/cli SLSA provenance Attested (release line skipped)	PASS	PASS	-	timestamps:1,tlog:true	0	OK	-
+P6	cli/cli release attestation Strict (GitHub root, TSA, no tlog)	PASS	PASS	-	timestamps:1,tlog:false	0	OK	-
+P7a	P1 inside unshare -n	PASS	PASS	-	timestamps:1,tlog:true	0	OK	-
+P7b	P6 inside unshare -n	PASS	PASS	-	timestamps:1,tlog:false	0	OK	-
+P8	P1 from a SHA-256 digest (CAS) instead of bytes	PASS	PASS	-	timestamps:1,tlog:true	0	OK	-
+P9	pchi-test release attestation Strict	PASS	PASS	-	timestamps:1,tlog:false	0	OK	-
+P10	pchi-test SLSA provenance Attested	PASS	PASS	-	timestamps:1,tlog:true	0	OK	-
+P11	P6 from a SHA-256 digest	PASS	PASS	-	timestamps:1,tlog:false	0	OK	-
+O1	Attested: same IDs, other expected name	PASS+name_changed	PASS	-	timestamps:1,tlog:true,name_changed:https://github.com/matthart1983/netwatch	0	OK	-
+O2	Strict: same IDs, other expected name	PASS+name_changed	PASS	-	timestamps:1,tlog:false,name_changed:cli/cli	0	OK	-
+N1	changed byte in aarch64.rpm	INVALID:ArtifactDigestMismatch	INVALID	ArtifactDigestMismatch	-	1	OK	artifact mismatch: artifact hash does not match any subject in attestation
+N2	changed byte in gh tar.gz (Strict)	INVALID:ArtifactDigestMismatch	INVALID	ArtifactDigestMismatch	-	1	OK	artifact mismatch: artifact hash does not match any subject in attestation
+N3	bytes not in the release	INVALID:ArtifactDigestMismatch	INVALID	ArtifactDigestMismatch	-	1	OK	artifact mismatch: artifact hash does not match any subject in attestation
+N4	empty bundle file	DOWNGRADE:BundleMissing	DOWNGRADE	BundleMissing	-	2	OK	no attestation bundles
+N5	bundle over 256 KiB	INVALID:BundleTooLarge	INVALID	BundleTooLarge	-	1	OK	319515 bytes
+N5b	17 bundles for one digest	INVALID:TooManyBundles	INVALID	TooManyBundles	-	1	OK	17 bundles
+N6	payload rewritten to the changed digest	INVALID:SignatureInvalid	INVALID	SignatureInvalid	-	1	OK	invalid signature: DSSE signature verification failed: Verification error: ECDSA_P256_SHA256 signature is invalid
+N7	public-good root without CAs	INVALID:*	INVALID	NoValidAuthority	-	1	OK	no trusted certificate authority is valid at 2026-10-17T00:19:54Z
+N8	SLSA provenance against the GitHub root	INVALID:*	INVALID	TlogInclusionPromise	-	1	OK	invalid inclusion promise: No log key valid at integrated time 2026-06-17T19:53:16Z for log ID wNI9atQGlz+VWfO6LRygH4QUfY/8W4RFwiT5i5WRgB0=
+N9	release attestation against the public-good root	INVALID:*	INVALID	TimestampInvalid	-	1	OK	invalid RFC 3161 timestamp: TSA timestamp verification failed: Failed to verify timestamp signature: CMS signer does not match any trusted TSA certificate
+N10	Attested: other repository ID	INVALID:RepositoryIdMismatch	INVALID	RepositoryIdMismatch	-	1	OK	expected 1158138527, got 1158138526
+N11	Attested: other owner ID	INVALID:OwnerIdMismatch	INVALID	OwnerIdMismatch	-	1	OK	expected 13101479, got 13101478
+N12	Attested: other workflow	INVALID:WorkflowMismatch	INVALID	WorkflowMismatch	-	1	OK	expected .github/workflows/other.yml, got .github/workflows/release.yml
+N13	Attested: workflow prefix only	INVALID:WorkflowMismatch	INVALID	WorkflowMismatch	-	1	OK	expected .github/workflows/rel, got .github/workflows/release.yml
+N14	Attested: workflow as a regex	INVALID:WorkflowMismatch	INVALID	WorkflowMismatch	-	1	OK	expected .github/workflows/release.ym., got .github/workflows/release.yml
+N15	Attested: other OIDC issuer	INVALID:IssuerMismatch	INVALID	IssuerMismatch	-	1	OK	issuer mismatch: expected https://token.actions.githubusercontent.com/pakomichi-r003, got https://token.actions.githubusercontent.com
+N16	Attested: other ref	INVALID:RefMismatch	INVALID	RefMismatch	-	1	OK	expected refs/tags/v0.35.3, got refs/tags/v0.35.4
+N17	Attested: ref in other letter case	INVALID:RefMismatch	INVALID	RefMismatch	-	1	OK	expected refs/tags/V0.35.4, got refs/tags/v0.35.4
+N18	Attested: other commit	INVALID:CommitMismatch	INVALID	CommitMismatch	-	1	OK	expected 0000000000000000000000000000000000000000, got 9c249f576766a164108103cdd0da627a7f00229b
+N19	Attested: only a release attestation present	DOWNGRADE:ProvenanceMissing	DOWNGRADE	ProvenanceMissing	-	2	OK	1 bundles, none with predicate https://slsa.dev/provenance/v1
+N20	Strict: only SLSA provenance present	DOWNGRADE:ReleaseAttestationMissing	DOWNGRADE	ReleaseAttestationMissing	-	2	OK	1 bundles, none with predicate https://in-toto.io/attestation/release/v0.2
+N21	Strict: other repository ID	INVALID:RepositoryIdMismatch	INVALID	RepositoryIdMismatch	-	1	OK	expected 212613050, got 212613049
+N22	Strict: other owner ID	INVALID:OwnerIdMismatch	INVALID	OwnerIdMismatch	-	1	OK	expected 59704712, got 59704711
+N23	Strict: other release ID	INVALID:ReleaseIdMismatch	INVALID	ReleaseIdMismatch	-	1	OK	expected 341013770, got 341013769
+N24	Strict: other tag	INVALID:TagMismatch	INVALID	TagMismatch	-	1	OK	expected v2.94.0, got v2.95.0
+N25	Strict: other tag commit	INVALID:CommitSubjectMismatch	INVALID	CommitSubjectMismatch	-	1	OK	expected 0000000000000000000000000000000000000000, got 70bb306bd25eb407f90eabefd98824aed62cf519
+N26	Strict: asset under another name	INVALID:SubjectNameMismatch	INVALID	SubjectNameMismatch	-	1	OK	no subject named gh_2.95.0_linux_386.tar.gz with sha256 25d1e4729e8808c9ed3d613e96ebd3f3e44446f2d368c89d878a71a36ddb3d8c
+N27	Attested: transparency log entry removed	INVALID:*	INVALID	BundleInvalid	-	1	OK	Bundle error: application/vnd.dev.sigstore.bundle.v0.3+json bundle must have an inclusion proof
+N28	Attested: inclusion proof hash changed	INVALID:TlogInclusionProof	INVALID	TlogInclusionProof	-	1	OK	invalid inclusion proof: inclusion proof verification failed: root hash mismatch: expected 653cdcdc389cbd7a196cf86a100e2d89d487095c01ae8cf414e3b5ce324c505e, computed 2c43392a88d0c2a08a762383dfbcd366f74413533cfcea2d08c7efe4d8d06031
+N29	Attested: checkpoint signature changed	INVALID:TlogCheckpoint	INVALID	TlogCheckpoint	-	1	OK	invalid checkpoint: No valid Rekor signature found on checkpoint
+N30	Attested: integratedTime moved back an hour	INVALID:TlogInclusionPromise	INVALID	TlogInclusionPromise	-	1	OK	invalid inclusion promise: SET verification failed: Verification error: ECDSA_P256_SHA256 signature is invalid
+N31	Attested: log entry of the cli/cli bundle	INVALID:*	INVALID	UntrustedCertificateChain	-	1	OK	certificate chain is invalid: certificate chain validation failed: CertNotValidYet { time: UnixTime(1781725996), not_before: UnixTime(1792196394) }
+N32	Attested: leaf certificate of the cli/cli bundle	INVALID:*	INVALID	UntrustedCertificateChain	-	1	OK	certificate chain is invalid: certificate chain validation failed: CertExpired { time: UnixTime(1792196394), not_after: UnixTime(1781726596) }
+N33	Strict: one byte of the TSA token changed	INVALID:TimestampInvalid	INVALID	TimestampInvalid	-	1	OK	invalid RFC 3161 timestamp: TSA timestamp verification failed: Failed to verify timestamp signature: CMS signer does not match any trusted TSA certificate
+N34	Strict: timestamp data removed (structural check)	INVALID:BundleInvalid	INVALID	BundleInvalid	-	1	OK	Bundle error: bundle must have at least one tlog entry or timestamp verification data
+N35	Strict: every GitHub CA window ended at its start	INVALID:NoValidAuthority	INVALID	NoValidAuthority	-	1	OK	no trusted certificate authority is valid at 2026-06-17T19:55:08Z
+N36	Attested: root without CT logs (trust root defect)	INVALID:TrustRootInvalid	INVALID	TrustRootInvalid	-	1	OK	invalid trusted root: no CT log keys in trusted root
+N36b	Attested: CT log keys swapped in the root	INVALID:SctInvalid	INVALID	SctInvalid	-	1	OK	invalid signed certificate timestamp: SCT signature verification failed: Verification error: key not found or not valid at 2026-10-17T00:19:54.268Z: dd3d306ac6c7113263191e1c99673702a24a5eb8de3cadff878a72802f29ee8e
+N37	two DSSE signatures	INVALID:BundleMalformed	INVALID	BundleMalformed	-	1	OK	JSON error: DSSE envelope must contain exactly one signature, found 2 at line 1 column 12400
+N38	payloadType text/plain	INVALID:UnsupportedContent	INVALID	UnsupportedContent	-	1	OK	payloadType text/plain
+N39	statement _type changed (payload re-encoded)	INVALID:SignatureInvalid	INVALID	SignatureInvalid	-	1	OK	invalid signature: DSSE signature verification failed: Verification error: ECDSA_P256_SHA256 signature is invalid
+N40	bundle mediaType v0.1	INVALID:*	INVALID	UnsupportedBundleVersion	-	1	OK	application/vnd.dev.sigstore.bundle+json;version=0.1
+N41	messageSignature instead of DSSE	INVALID:UnsupportedContent	INVALID	UnsupportedContent	-	1	OK	not a DSSE envelope
+N42	no CryptoProvider installed	PANIC	PANIC	-		101	OK	
+N43	pchi-test release attestation, cli/cli IDs expected	INVALID:RepositoryIdMismatch	INVALID	RepositoryIdMismatch	-	1	OK	expected 212613049, got 1429109739

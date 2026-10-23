@@ -1,0 +1,13 @@
+case	apt_options	exit_code	outcome	message
+1-now	default	0	accepted; candidate=2	none
+2a-rollback-A-now-v2	default	0	accepted; candidate=2	none
+2b-rollback-B-3d-old-v1	default	0	ignored_silently_kept_stored; candidate=2	none
+3a-10d-old	default	0	accepted; candidate=2	none
+3b-10d-old	-o Acquire::Max-ValidTime=604800	100	refused; candidate=none	E: Release file for http://127.0.0.1:18180/dists/lab/InRelease is expired (invalid since 3d 0h 0min 0s). Updates for this repository will not be applied.
+3c-10d-old	sources Valid-Until-Max: 604800	100	refused; candidate=none	E: Release file for http://127.0.0.1:18180/dists/lab/InRelease is expired (invalid since 3d 0h 0min 1s). Updates for this repository will not be applied.
+4a-obs-date	default	0	accepted; candidate=2	none
+4b-obs-date	-o Acquire::Max-ValidTime=604800	100	refused; candidate=none	E: Release file for http://127.0.0.1:18180/dists/lab/InRelease is expired (invalid since 30d 22h 37min 22s). Updates for this repository will not be applied.
+5a-future-2d	default	100	refused; candidate=none	E: Release file for http://127.0.0.1:18180/dists/lab/InRelease is not valid yet (invalid for another 1d 23h 59min 50s). Updates for this repository will not be applied.
+5b-future-2d	sources Date-Max-Future: 259200	0	accepted; candidate=2	none
+5c-future-2d	-o Acquire::Max-FutureTime=259200	0	accepted; candidate=2	none
+5d-future-2d	-o Acquire::Check-Date=false	0	accepted; candidate=2	none

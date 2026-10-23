@@ -36,7 +36,7 @@ mod control;
 mod deb;
 mod error;
 #[cfg(test)]
-mod fixtures;
+pub(crate) mod fixtures;
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 mod rpm_reader;
 #[cfg(target_os = "linux")]

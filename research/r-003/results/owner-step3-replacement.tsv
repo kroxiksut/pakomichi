@@ -1,0 +1,15 @@
+field	step2	step3	expected
+release_id	420339762	420339762	yes
+release_immutable	False	False	yes
+tag_commit	6ee0f9f53e5a296bd19904188d055608f32ffd82	6ee0f9f53e5a296bd19904188d055608f32ffd82	yes
+asset_name	pakomichi-r003-fixture_0.2.0_all.deb	pakomichi-r003-fixture_0.2.0_all.deb	yes
+asset_id	664783235	664806807	yes
+asset_sha256	93b4dc424c37d0eb0fd464025eed2a7d90c4f2b2d50a83bd7eee5bcc047c56cf	a59a5cfd27b6b5090de79452c96ca6526cfddda93b1b2fab559f08ac8bdf41f9	yes
+api_digest_matches_download		sha256:a59a5cfd27b6b5090de79452c96ca6526cfddda93b1b2fab559f08ac8bdf41f9	yes
+expected_rebuild_sha256	a59a5cfd27b6b5090de79452c96ca6526cfddda93b1b2fab559f08ac8bdf41f9	a59a5cfd27b6b5090de79452c96ca6526cfddda93b1b2fab559f08ac8bdf41f9	yes
+new_asset_attestations		0	yes
+new_asset_uploader		github-actions[bot]	observe
+new_asset_created_at		2026-10-22T05:40:54Z	observe
+old_asset_lookup_http		404	yes
+old_digest_attestation_http		200	observe
+old_digest_attestations_remaining	1	1	observe

@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# P3-005a test unit: the repository reader's loopback socket (Accept=no:
+# one service process owns the listener). The production port waits for
+# the N-034 test (ADR-024 point 6).
+
+[Unit]
+Description=Pakomichi repository reader socket (P3-005a test)
+
+[Socket]
+ListenStream=127.0.0.1:18080
+Accept=no
+NoDelay=true
+
+[Install]
+WantedBy=sockets.target

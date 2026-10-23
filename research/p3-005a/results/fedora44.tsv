@@ -1,0 +1,11 @@
+G1	PASS	publish g1 through GenerationStore, update, install: rc=0 version=1.0 generation=1
+G2	PASS	switch g1->g2 between the signed file and its indexes (1 held): update rc=0, client holds g1 metadata; responses:  5 status=200 
+G3	PASS	control, non-unique repodata names: the publisher refuses the generation (rc=1: path repodata/filelists.xml.gz is neither mutable metadata nor content-addressed); current stays 2
+G4	PASS	control, retention 0: update rc=1; >>> Status code: 404 for http://127.0.0.1:18081/alpha/repodata/925d7f7a33930419e717cad956529a3ac2278c103b8f22c980d7faaf56d87811-primary.xml.gz (IP: 127.0.0.1) - http://127.0.0.1:18081/alpha/repodata/925d7f7a33930419e717cad956529a3ac2278c103b8f22c980d7faaf56d87811-primary.xml.gz; responses:  2 status=200  4 status=404  (a failure here is the expected outcome)
+G5	PASS	package of a superseded generation: old path serves old bytes=yes; install rc=0 version=1.0 (metadata refreshed first: no); after update+upgrade version=3.0
+G6	PASS	640 client updates in 80 rounds of 8 parallel while 10 generations were published: failed=0, succeeded with inconsistent metadata=0 
+H1	PASS	N-025: POST=405 PUT=405 DELETE=405 PATCH=405 (allow: GET, HEAD); current unchanged: 17 -> 17
+H2	PASS	GET=200, foreign Host=400, ../=404, %2e%2e=404, GET with a body=400
+H3	PASS	N-017: changed package object: GET=500, body starts ' o b j e c t u n a v a i l a b
+ l e \n'; client install rc=1; log: event=object-refused target=/alpha/packages/c418b1fb2a47155099de062030877744045b9d67af916e057973c21998ca4dc3/p3005a-sampleapp-2.0-1.noarch.rpm
+H4	PASS	reader process user=pakomichi-reader (pid 1298); write into the publish root as the reader: refused

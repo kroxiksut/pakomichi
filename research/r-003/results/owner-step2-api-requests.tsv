@@ -1,0 +1,13 @@
+time	method	url	status	ratelimit_remaining	ratelimit_resource
+2026-10-22T05:32:44+00:00	GET	https://api.github.com/rate_limit	200	45	core
+2026-10-22T05:32:45+00:00	GET	https://api.github.com/repos/kroxiksut/pchi-test	200	44	core
+2026-10-22T05:32:45+00:00	GET	https://api.github.com/repos/kroxiksut/pchi-test/releases/tags/v0.2.0-mutable	200	43	core
+2026-10-22T05:32:46+00:00	GET	https://api.github.com/repos/kroxiksut/pchi-test/git/ref/tags/v0.2.0-mutable	200	42	core
+2026-10-22T05:32:46+00:00	GET	https://api.github.com/repos/kroxiksut/pchi-test/attestations/sha1:6ee0f9f53e5a296bd19904188d055608f32ffd82?per_page=100	200	41	core
+2026-10-22T05:32:49+00:00	GET	https://api.github.com/repos/kroxiksut/pchi-test/attestations/sha256:93b4dc424c37d0eb0fd464025eed2a7d90c4f2b2d50a83bd7eee5bcc047c56cf?per_page=100	200	40	core
+2026-10-22T05:32:49+00:00	GET	https://api.github.com/repos/kroxiksut/pchi-test	200	39	core
+2026-10-22T05:32:50+00:00	GET	https://api.github.com/repos/kroxiksut/pchi-test/releases/tags/v0.1.0	200	38	core
+2026-10-22T05:32:50+00:00	GET	https://api.github.com/repos/kroxiksut/pchi-test/git/ref/tags/v0.1.0	200	37	core
+2026-10-22T05:32:51+00:00	GET	https://api.github.com/repos/kroxiksut/pchi-test/attestations/sha1:6ee0f9f53e5a296bd19904188d055608f32ffd82?per_page=100	200	36	core
+2026-10-22T05:32:51+00:00	GET	https://api.github.com/repos/kroxiksut/pchi-test/immutable-releases	401	35	core
+2026-10-22T05:32:51+00:00	GET	https://api.github.com/rate_limit	200	35	core

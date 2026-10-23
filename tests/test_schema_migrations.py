@@ -10,13 +10,21 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 INITIAL_MIGRATION = PROJECT_ROOT / "migrations" / "0001_initial.sql"
+OWNER_MIGRATION = PROJECT_ROOT / "migrations" / "0002_repository_owner_confirmation.sql"
+MIGRATIONS = (INITIAL_MIGRATION, OWNER_MIGRATION)
+SCHEMA_VERSION = len(MIGRATIONS)
 ZERO_DIGEST = "0" * 64
 
 
-def migrated_database(path: str = ":memory:") -> sqlite3.Connection:
+def apply_migrations(connection: sqlite3.Connection, migrations=MIGRATIONS) -> None:
+    for migration in migrations:
+        connection.executescript(migration.read_text(encoding="utf-8"))
+
+
+def migrated_database(path: str = ":memory:", migrations=MIGRATIONS) -> sqlite3.Connection:
     connection = sqlite3.connect(path)
     connection.execute("PRAGMA foreign_keys = ON")
-    connection.executescript(INITIAL_MIGRATION.read_text(encoding="utf-8"))
+    apply_migrations(connection, migrations)
     return connection
 
 
@@ -229,6 +237,7 @@ class InitialMigrationTests(unittest.TestCase):
             "package_identity",
             "release_approval",
             "release_record",
+            "repository_owner_confirmation",
             "repository_previous_address",
             "schema_migrations",
             "snapshot",
@@ -244,12 +253,14 @@ class InitialMigrationTests(unittest.TestCase):
         }
 
         self.assertEqual(expected_tables, actual_tables)
-        self.assertEqual(1, connection.execute("PRAGMA user_version").fetchone()[0])
         self.assertEqual(
-            (1, "initial"),
+            SCHEMA_VERSION, connection.execute("PRAGMA user_version").fetchone()[0]
+        )
+        self.assertEqual(
+            [(1, "initial"), (2, "repository_owner_confirmation")],
             connection.execute(
-                "SELECT version, name FROM schema_migrations"
-            ).fetchone(),
+                "SELECT version, name FROM schema_migrations ORDER BY version"
+            ).fetchall(),
         )
 
     def test_foreign_keys_are_enforced(self) -> None:
@@ -424,8 +435,6 @@ class InitialMigrationTests(unittest.TestCase):
                 connection.execute(statement)
 
     def test_reapplication_and_backup_restore_are_idempotent(self) -> None:
-        migration_sql = INITIAL_MIGRATION.read_text(encoding="utf-8")
-
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             source_path = root / "source.sqlite3"
@@ -435,10 +444,16 @@ class InitialMigrationTests(unittest.TestCase):
             source = migrated_database(str(source_path))
             insert_source(source)
             source.commit()
-            source.executescript(migration_sql)
+            apply_migrations(source)
+            self.assertEqual(
+                SCHEMA_VERSION,
+                source.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0],
+            )
             self.assertEqual(
                 1,
-                source.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0],
+                source.execute(
+                    "SELECT COUNT(*) FROM repository_owner_confirmation"
+                ).fetchone()[0],
             )
 
             backup = sqlite3.connect(backup_path)
@@ -463,7 +478,7 @@ class InitialMigrationTests(unittest.TestCase):
                 ).fetchone(),
             )
             self.assertEqual(
-                1,
+                SCHEMA_VERSION,
                 restored.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0],
             )
             restored.close()
@@ -573,7 +588,7 @@ class InitialMigrationTests(unittest.TestCase):
                         connection.execute(statement, (value,))
             checked_tables.add(table)
 
-        self.assertEqual(17, len(checked_tables))
+        self.assertEqual(18, len(checked_tables))
 
     def test_nullable_columns_accept_null(self) -> None:
         connection = migrated_database()
@@ -582,7 +597,7 @@ class InitialMigrationTests(unittest.TestCase):
         nullable_columns = []
         for table in table_names(connection):
             self.assertEqual(
-                1,
+                SCHEMA_VERSION if table == "schema_migrations" else 1,
                 connection.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0],
                 table,
             )
@@ -856,6 +871,127 @@ class PinnedLevelTests(unittest.TestCase):
         set_pinned_consent(self.connection, True)
         set_pinned_consent(self.connection, False)
         self.assertEqual("strict", floor())
+
+
+class OwnerConfirmationTests(unittest.TestCase):
+    """Migration 0002: the confirmed owner IDs of a source (R-003)."""
+
+    def setUp(self) -> None:
+        self.connection = migrated_database()
+        insert_source(self.connection)
+
+    def confirmations(self, source_id: str = "source-1") -> list[tuple[str, str]]:
+        return self.connection.execute(
+            "SELECT owner_id, kind FROM repository_owner_confirmation "
+            "WHERE source_id = ? ORDER BY id",
+            (source_id,),
+        ).fetchall()
+
+    def current_owner(self, source_id: str = "source-1") -> str:
+        return self.connection.execute(
+            "SELECT owner_id FROM forge_repository WHERE id = ?", (source_id,)
+        ).fetchone()[0]
+
+    def confirm(self, owner_id: str, kind: str = "transfer", source_id: str = "source-1") -> None:
+        self.connection.execute(
+            "INSERT INTO repository_owner_confirmation(source_id, owner_id, kind, confirmed_at) "
+            "VALUES (?, ?, ?, '2026-10-22T06:10:00Z')",
+            (source_id, owner_id, kind),
+        )
+
+    def test_adding_a_source_records_its_pinned_owner(self) -> None:
+        self.assertEqual([("owner-1", "pinned")], self.confirmations())
+        self.assertEqual(
+            "2026-10-18T00:00:00Z",
+            self.connection.execute(
+                "SELECT confirmed_at FROM repository_owner_confirmation"
+            ).fetchone()[0],
+        )
+
+    def test_a_confirmed_transfer_moves_the_owner_and_keeps_the_earlier_one(self) -> None:
+        # R-003 step 4: kroxiksut (2264172) -> pchi-test-org (346117935).
+        self.confirm("owner-2")
+        self.assertEqual("owner-2", self.current_owner())
+        self.assertEqual(
+            [("owner-1", "pinned"), ("owner-2", "transfer")], self.confirmations()
+        )
+        # A move back is a transfer again and is recorded as one.
+        self.confirm("owner-1")
+        self.assertEqual("owner-1", self.current_owner())
+        self.assertEqual(
+            {"owner-1", "owner-2"},
+            {owner for owner, _ in self.confirmations()},
+        )
+        self.assertEqual(3, len(self.confirmations()))
+
+    def test_the_owner_never_changes_without_a_confirmation(self) -> None:
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "confirmed transfer"):
+            self.connection.execute(
+                "UPDATE forge_repository SET owner_id = 'owner-2' WHERE id = 'source-1'"
+            )
+        # An earlier confirmed owner is no shortcut either: the latest
+        # confirmation names the current owner.
+        self.confirm("owner-2")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "confirmed transfer"):
+            self.connection.execute(
+                "UPDATE forge_repository SET owner_id = 'owner-1' WHERE id = 'source-1'"
+            )
+        self.assertEqual("owner-2", self.current_owner())
+        # Rewriting the same value is not a change.
+        self.connection.execute(
+            "UPDATE forge_repository SET owner_id = 'owner-2', state = 'active' "
+            "WHERE id = 'source-1'"
+        )
+
+    def test_invalid_confirmations_are_refused_and_change_nothing(self) -> None:
+        cases = (
+            ("owner-1", "transfer", "source-1", "another owner"),
+            ("owner-2", "pinned", "source-1", "pinned once"),
+            # The trigger refuses before the foreign key is checked.
+            ("owner-2", "transfer", "source-missing", "pinned source"),
+            ("", "transfer", "source-1", "owner_id <> ''"),
+            ("owner-2", "adopted", "source-1", "kind IN"),
+        )
+        for owner_id, kind, source_id, message in cases:
+            with self.assertRaisesRegex(sqlite3.IntegrityError, message, msg=(owner_id, kind)):
+                self.confirm(owner_id, kind, source_id)
+        self.assertEqual([("owner-1", "pinned")], self.confirmations())
+        self.assertEqual("owner-1", self.current_owner())
+
+    def test_confirmations_are_append_only_and_keep_their_source(self) -> None:
+        self.confirm("owner-2")
+        for statement in (
+            "UPDATE repository_owner_confirmation SET owner_id = 'owner-3'",
+            "UPDATE repository_owner_confirmation SET confirmed_at = 'later'",
+            "DELETE FROM repository_owner_confirmation",
+            "DELETE FROM forge_repository WHERE id = 'source-1'",
+        ):
+            with self.assertRaises(sqlite3.IntegrityError, msg=statement):
+                self.connection.execute(statement)
+        self.assertEqual(2, len(self.confirmations()))
+
+    def test_upgrading_from_0001_records_existing_owners(self) -> None:
+        connection = migrated_database(migrations=(INITIAL_MIGRATION,))
+        insert_source(connection)
+        insert_source(connection, source_id="source-2", repository_id="1002")
+        connection.execute(
+            "UPDATE forge_repository SET owner_id = 'owner-9' WHERE id = 'source-2'"
+        )
+        apply_migrations(connection, (OWNER_MIGRATION,))
+        apply_migrations(connection, (OWNER_MIGRATION,))
+        self.assertEqual(
+            [
+                ("source-1", "owner-1", "pinned", "2026-10-18T00:00:00Z"),
+                ("source-2", "owner-9", "pinned", "2026-10-18T00:00:00Z"),
+            ],
+            connection.execute(
+                "SELECT source_id, owner_id, kind, confirmed_at "
+                "FROM repository_owner_confirmation ORDER BY source_id"
+            ).fetchall(),
+        )
+        self.assertEqual(
+            SCHEMA_VERSION, connection.execute("PRAGMA user_version").fetchone()[0]
+        )
 
 
 if __name__ == "__main__":

@@ -77,7 +77,7 @@ as_r003 python3 -I -B "$script" checks --work "$work" --results "$tmp_results" -
     printf 'python\t%s\n' "$(python3 --version 2>&1)"
     printf 'curl\t%s\n' "$(curl --version | head -n 1 | cut -d' ' -f1-2)"
     printf 'gh\t%s\n' "$("$gh" --version | head -n 1)"
-    printf 'gh_tarball_sha256\t%s\n' "$(sha256sum "$local_root/tools/gh_2.95.0_linux_amd64.tar.gz" | awk '{print $1}')"
+    printf 'gh_tarball_sha256\t%s\n' "$(cat /opt/r003-gh/TARBALL-SHA256)"
     printf 'unshare\t%s\n' "$(unshare --version)"
     for host in api.github.com github.com release-assets.githubusercontent.com tuf-repo-cdn.sigstore.dev; do
         printf 'resolve_%s\t%s\n' "$host" "$(getent ahostsv4 "$host" | awk '{print $1}' | sort -u | tr '\n' ' ' | sed 's/ $//')"

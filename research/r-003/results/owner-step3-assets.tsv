@@ -1,0 +1,2 @@
+asset_id	name	size_api	size_downloaded	api_digest	downloaded_sha256	digest_match	attestation_http_status	bundle_count	attestation_repository_ids
+664806807	pakomichi-r003-fixture_0.2.0_all.deb	800	800	sha256:a59a5cfd27b6b5090de79452c96ca6526cfddda93b1b2fab559f08ac8bdf41f9	a59a5cfd27b6b5090de79452c96ca6526cfddda93b1b2fab559f08ac8bdf41f9	yes	404	0	

@@ -1,0 +1,3 @@
+case	result_index	predicate_type	predicate_repository_id	predicate_owner_id	predicate_release_id	predicate_tag	match_repo_id	match_owner_id	match_release_id	match_tag	match_commit	match_asset_sha256	all_match
+A1-release-verify	0	https://in-toto.io/attestation/release/v0.2	1429109739	2264172	420324447	v0.1.0	yes	yes	yes	yes	yes	yes	yes
+A1-release-verify-asset	0	https://in-toto.io/attestation/release/v0.2	1429109739	2264172	420324447	v0.1.0	yes	yes	yes	yes	yes	yes	yes

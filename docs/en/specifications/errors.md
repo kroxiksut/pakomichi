@@ -70,3 +70,61 @@ The CLI displays the same reason without a separate model:
 The prohibition of sensitive-data signatures complements sanitization at the
 boundary of the network and cryptographic adapters, but does not replace it:
 an arbitrary input error must not be turned directly into a `message`.
+
+## Wire contract v2: attestation sub-reasons
+
+Version `2` (ADR-030 point 7, ADR-031) is version 1 plus `reason.subcode`. It is
+written only for `E_ATTESTATION_INVALID` with a sub-reason; every other event,
+including `E_ATTESTATION_INVALID` without one, stays version 1, so a version 1
+reader keeps reading them and rejects only the version 2 events. Readers of
+this contract accept both versions. A version 2 event without `subcode`, a
+version 1 event with one, a `subcode` with another code, and an unknown
+`subcode` are rejected.
+
+```json
+{
+  "schema_version": 2,
+  "event": "reason",
+  "reason": {
+    "code": "E_ATTESTATION_INVALID",
+    "object": {
+      "kind": "artifact",
+      "id": "artifact-1234"
+    },
+    "message": "attestation rejected: owner id mismatch",
+    "subcode": "owner_id_mismatch"
+  }
+}
+```
+
+The `message` of an attestation failure is fixed text for its sub-reason;
+values from the bundle or the certificate never enter it. The sub-reasons:
+
+| Subcode | Meaning |
+|---|---|
+| `bundle_too_large` | A bundle is over 256 KiB |
+| `too_many_bundles` | More than 16 bundles for one digest |
+| `bundle_malformed` | A bundle does not parse, or its DSSE envelope does not have exactly one signature |
+| `bundle_unsupported` | Not a v0.3 bundle, not DSSE, not an in-toto payload, or the library's structural rules refuse it |
+| `signature_invalid` | The DSSE signature over the statement does not verify |
+| `artifact_digest_mismatch` | The bytes are not a subject of the signed statement |
+| `certificate_untrusted` | The certificate does not chain to the trusted root or breaks the certificate profile |
+| `certificate_time` | No authority or certificate is valid at the verified time |
+| `sct_invalid` | The certificate's SCT does not verify |
+| `tlog_inclusion` | The transparency-log inclusion proof does not verify, or log verification is incomplete |
+| `tlog_checkpoint` | The signed checkpoint does not verify |
+| `tlog_promise` | The inclusion promise or the integrated time does not verify |
+| `tlog_entry` | The log entry does not describe this bundle, is malformed, or comes from an unknown log |
+| `timestamp_invalid` | An RFC 3161 timestamp does not verify |
+| `no_verified_time` | No signing time verified at all |
+| `identity_mismatch` | The certificate SAN or OIDC issuer is not the required one |
+| `repository_id_mismatch` | The attested repository ID is not the pinned one |
+| `owner_id_mismatch` | The attested owner ID is not a confirmed owner |
+| `release_mismatch` | Another release ID, package ID, tag, or tag reference object |
+| `subject_mismatch` | The asset's name is missing or carries another digest |
+| `workflow_mismatch` | The signer is not the pinned workflow of the source repository |
+| `ref_mismatch` | The source ref is not the expected one |
+| `commit_mismatch` | The source commit is not the commit the release tag points to |
+| `runner_not_hosted` | Not built on a GitHub-hosted runner |
+| `statement_invalid` | The verified statement is not an in-toto Statement v1 or lacks a required field |
+| `trust_root_invalid` | The trusted root itself is defective, for example without CT log keys |

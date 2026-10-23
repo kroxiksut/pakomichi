@@ -34,6 +34,6 @@ pub use error::CasError;
 pub use gc::{GcReport, GcRoots, Lease};
 #[cfg(unix)]
 pub use store::{
-    DEFAULT_MAX_OBJECT_BYTES, ScrubReport, Store, StoreConfig, StoredObject, Verification,
-    VerifiedObject,
+    DEFAULT_MAX_OBJECT_BYTES, ObjectReader, ScrubReport, Store, StoreConfig, StoredObject,
+    Verification, VerifiedObject,
 };

@@ -3,44 +3,11 @@
 use std::error::Error;
 use std::fs;
 use std::os::unix::fs::{PermissionsExt, symlink};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::*;
+use crate::state::test_support::TempDir;
 
 type TestResult = Result<(), Box<dyn Error>>;
-
-/// A unique directory with mode 0700 under the system temporary directory,
-/// removed on drop.
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> io::Result<Self> {
-        static COUNTER: AtomicU64 = AtomicU64::new(0);
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|elapsed| elapsed.as_nanos())
-            .unwrap_or(0);
-        let path = std::env::temp_dir().join(format!(
-            "pakomichi-state-test-{}-{}-{nanos}",
-            std::process::id(),
-            COUNTER.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::create_dir(&path)?;
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
-        Ok(Self(path))
-    }
-
-    fn join(&self, name: &str) -> PathBuf {
-        self.0.join(name)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
 
 fn insert_source(owner: &StateOwner, id: &str, repository_id: &str) -> rusqlite::Result<usize> {
     owner.connection.execute(
@@ -101,7 +68,7 @@ fn opening_creates_a_private_database_with_the_schema() -> TestResult {
             .query_row("SELECT count(*) FROM schema_migrations", [], |row| {
                 row.get(0)
             })?;
-    assert_eq!(migrations, 1);
+    assert_eq!(migrations, SCHEMA_VERSION);
 
     // Foreign keys are enforced on the owner's connection.
     let orphan = owner.connection.execute(
@@ -165,7 +132,7 @@ fn foreign_migration_records_are_refused() -> TestResult {
     {
         let owner = StateOwner::open(&path)?;
         owner.connection.execute(
-            "INSERT INTO schema_migrations (version, name) VALUES (2, 'not this build')",
+            "INSERT INTO schema_migrations (version, name) VALUES (3, 'not this build')",
             [],
         )?;
     }

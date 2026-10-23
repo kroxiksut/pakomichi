@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# P1-003c offline probe: sigstore-verify 0.15 behind a Pakomichi ring
+# CryptoProvider, with the Strict/Attested policy layer on top. Research
+# tooling only, not production Pakomichi code. Built in a stopped builder by
+# research/r-003/verifier-probe.sh, outside the checkout.
+
+[package]
+name = "pakomichi-r003-verifier-probe"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.94.1"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace]
+resolver = "3"
+
+[dependencies]
+ring = { version = "=0.17.14", default-features = false, features = ["alloc"] }
+serde_json = "=1.0.154"
+sigstore-crypto = { version = "=0.15.0", default-features = false }
+sigstore-trust-root = { version = "=0.15.0", default-features = false }
+sigstore-types = { version = "=0.15.0" }
+sigstore-verify = { version = "=0.15.0", default-features = false }
+
+[profile.release]
+debug = false
+strip = true
+
+[lints.rust]
+unsafe_code = "deny"

@@ -33,3 +33,6 @@ Each ADR contains its rationale, alternatives, consequences, and a reference to 
 - [ADR-027: Provenance levels in reduced form: invariants, ratchet, visibility, and Pinned with per-release approval (supersedes ADR-005 in part)](ADR-027.md)
 - [ADR-028: DEB metadata through `dpkg-deb --ctrl-tarfile` (supersedes ADR-017 point 4 in part)](ADR-028.md)
 - [ADR-029: Local IPC: Unix sockets per channel and length-prefixed JSON](ADR-029.md)
+- [ADR-030: Production attestation verifier: `sigstore-verify` behind a Pakomichi policy layer](ADR-030.md)
+- [ADR-031: Reason events v2 with an attestation sub-reason (supersedes the last sentence of ADR-029 point 5)](ADR-031.md)
+- [ADR-032: Source model: any source kind, honest evidence levels, configurable policy](ADR-032.md) (proposed, draft)

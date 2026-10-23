@@ -68,7 +68,13 @@ Pakomichi's model carries over to Windows with the following mapping, each part 
 
 ## Environment
 
-A dedicated VM `pakomichi-win-*` in `V:\VMs\pakomichi-*`, never the owner's or NetRuleRouter's VMs, under the VM lease rules; NAT only; a snapshot before each experiment; WinGet and Windows versions recorded. Only test-only signing certificates are used, and never added to the host. No experiment runs on the development host.
+A dedicated VM `pakomichi-win-*` in `V:\VMs\pakomichi-*`, with a snapshot before each experiment. Alternatively, with the owner's approval (given on 2026-10-22), a shared Windows test VM, used on these conditions:
+
+- experiments run in their own directory;
+- every change is listed and reverted at the end, and the revert is checked: WinGet sources and settings, installed packages, certificates, files;
+- snapshots of a shared VM are never created, restored, or deleted.
+
+Either way: the VM lease rules apply, NAT only, and the WinGet and Windows versions are recorded. Only test-only signing certificates are used, and never added to the host. No experiment runs on the development host.
 
 ## Fixtures
 

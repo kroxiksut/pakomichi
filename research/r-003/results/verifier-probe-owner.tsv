@@ -1,0 +1,11 @@
+case	description	expected	verdict	reason	notes	status	gh	gh_note
+R1	after rename: Strict, same IDs, new name	PASS+name_changed	PASS	-	timestamps:1,tlog:false,name_changed:kroxiksut/pchi-test	OK	-	-
+R2	after rename: Attested, same IDs, new name (gh binds the old name)	PASS+name_changed	PASS	-	timestamps:1,tlog:true,name_changed:https://github.com/kroxiksut/pchi-test	OK	reject	Error: verifying with issuer "sigstore.dev"
+U1	name reused: new kroxiksut/pchi-test (ID 1429307950) offered the original's bundle, Strict	INVALID:RepositoryIdMismatch	INVALID	RepositoryIdMismatch	-	OK	-	-
+U2	name reused: same, Attested (gh accepts by name)	INVALID:RepositoryIdMismatch	INVALID	RepositoryIdMismatch	-	OK	accept	
+T1	after transfer: Strict, owner ID re-pinned to the organization	INVALID:OwnerIdMismatch	INVALID	OwnerIdMismatch	-	OK	-	-
+T2	after transfer: Attested, owner ID re-pinned to the organization	INVALID:OwnerIdMismatch	INVALID	OwnerIdMismatch	-	OK	reject	Error: verifying with issuer "sigstore.dev"
+T3	after transfer: Strict, owner ID of the release time kept	PASS+name_changed	PASS	-	timestamps:1,tlog:false,name_changed:kroxiksut/pchi-test	OK	-	-
+F1	fork bundle against the original's pin (same owner ID)	INVALID:RepositoryIdMismatch	INVALID	RepositoryIdMismatch	-	OK	reject	Error: verifying with issuer "sigstore.dev"
+F2	fork bundle against the fork's own pin	PASS	PASS	-	timestamps:1,tlog:true	OK	accept	
+F3	fork's mutable release under Strict: no release attestation	DOWNGRADE:ReleaseAttestationMissing	DOWNGRADE	ReleaseAttestationMissing	-	OK	-	-

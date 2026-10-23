@@ -30,7 +30,7 @@
 
 ## Blocking research tasks
 
-`R-001` version/source selection; `R-002` RPM checks; `R-003` GitHub attestation/immutable; `R-004` local delivery and snapshots; `R-006` Astra Linux protected levels. R-001, R-002, R-004, R-005, and R-006 are complete and reflected in ADR-021 through ADR-027; R-003 is complete only for its read-only part, so Strict, Attested, and the RPM Attested exception still wait for it. Research tasks block **only their own dependent components**; other work may proceed in parallel.
+`R-001` version/source selection; `R-002` RPM checks; `R-003` GitHub attestation/immutable; `R-004` local delivery and snapshots; `R-006` Astra Linux protected levels. R-001, R-002, R-004, R-005, and R-006 are complete and reflected in ADR-021 through ADR-027; R-003 is complete (PASS, with the owner's test repository) and reflected in ADR-030 and ADR-031. Research tasks block **only their own dependent components**; other work may proceed in parallel.
 
 ## Release conditions
 

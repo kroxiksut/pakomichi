@@ -4,7 +4,8 @@
 //! limits, and pagination over an abstract [`Transport`].
 //!
 //! Endpoints are limited to one repository: by name (only to pin or check
-//! an address), by repository ID, and its releases by repository ID. There
+//! an address), by repository ID, and its releases and tag references by
+//! repository ID. There
 //! is no search, fork, or owner listing endpoint and no HTML parsing
 //! (specification item 2).
 
@@ -17,11 +18,12 @@ use super::identity::{
 };
 use super::pagination::{PaginationError, next_page, page_path};
 use super::rate_limit::{Clock, QuotaSnapshot, RateLimitGate, RateLimited, SystemClock};
+use super::release_pin::GitObjectId;
 use super::token::{CredentialId, Token};
 use super::transport::{API_ORIGIN, ApiRequest, Transport, TransportError};
 use super::wire::{
-    self, MAX_RELEASES_PER_PAGE, MAX_RESPONSE_BYTES, Release, WireError, parse_release,
-    parse_release_page, parse_repository,
+    self, MAX_RELEASES_PER_PAGE, MAX_RESPONSE_BYTES, Release, TagObjectKind, TagRef, WireError,
+    parse_release, parse_release_page, parse_repository, parse_tag_object, parse_tag_ref,
 };
 use crate::error::ReasonCode;
 
@@ -406,6 +408,71 @@ impl<T: Transport> GitHubClient<T> {
         not_found_as_none(self.fetch(path, parse_release).await)
     }
 
+    /// `GET /repositories/{id}/git/ref/tags/{tag}` exactly as returned, never
+    /// peeled: the Strict check compares the release attestation's `sha1`
+    /// subject with [`TagRef::object`]. `None` when no such tag exists. The
+    /// returned `ref` must equal `refs/tags/{tag}`, because GitHub matches
+    /// some ref paths by prefix.
+    pub async fn tag_ref(
+        &self,
+        repository: RepositoryId,
+        tag: &str,
+    ) -> Result<Option<Fetched<TagRef>>, GitHubError> {
+        let path = format!(
+            "/repositories/{repository}/git/ref/tags/{}",
+            encode_ref_path(tag)?
+        );
+        let Some(fetched) = not_found_as_none(self.fetch(path, parse_tag_ref).await)? else {
+            return Ok(None);
+        };
+        if fetched
+            .value
+            .ref_name
+            .strip_prefix("refs/tags/")
+            .is_none_or(|name| name != tag)
+        {
+            return Err(GitHubError::Wire(WireError::Invalid {
+                field: "ref",
+                problem: "does not name the requested tag",
+            }));
+        }
+        Ok(Some(fetched))
+    }
+
+    /// The commit a tag names, for the Attested path: a lightweight tag's
+    /// object, or the target of one annotated tag object whose `tag` field is
+    /// the requested tag. A tag of a tag is refused. `None` when the tag
+    /// reference does not exist; a missing tag object is
+    /// [`GitHubError::NotFound`], since the reference named it.
+    pub async fn peeled_commit(
+        &self,
+        repository: RepositoryId,
+        tag: &str,
+    ) -> Result<Option<GitObjectId>, GitHubError> {
+        let Some(reference) = self.tag_ref(repository, tag).await? else {
+            return Ok(None);
+        };
+        let reference = reference.value;
+        if reference.kind == TagObjectKind::Commit {
+            return Ok(Some(reference.object));
+        }
+        let path = format!("/repositories/{repository}/git/tags/{}", reference.object);
+        let annotated = self.fetch(path, parse_tag_object).await?.value;
+        let problem = if annotated.sha != reference.object {
+            Some(("sha", "does not match the tag reference"))
+        } else if annotated.tag != tag {
+            Some(("tag", "does not name the requested tag"))
+        } else if annotated.target_kind != TagObjectKind::Commit {
+            Some(("object.type", "a tag of a tag is not peeled further"))
+        } else {
+            None
+        };
+        match problem {
+            Some((field, problem)) => Err(GitHubError::Wire(WireError::Invalid { field, problem })),
+            None => Ok(Some(annotated.target)),
+        }
+    }
+
     async fn fetch<V>(
         &self,
         path: String,
@@ -555,6 +622,25 @@ fn redirect_target(location: &str) -> Result<RepositoryId, GitHubError> {
         .ok_or(GitHubError::RedirectRefused)
 }
 
+/// A tag as the path after `git/ref/tags/`: each `/`-separated segment is
+/// percent-encoded on its own and the separators stay literal, since the
+/// endpoint takes a ref path. Empty segments, which Git refuses in a ref
+/// name, are refused here too.
+fn encode_ref_path(tag: &str) -> Result<String, GitHubError> {
+    if tag.is_empty()
+        || tag.len() > MAX_TAG_BYTES
+        || tag.chars().any(char::is_control)
+        || tag.split('/').any(str::is_empty)
+    {
+        return Err(GitHubError::InvalidArgument("tag"));
+    }
+    Ok(tag
+        .split('/')
+        .map(percent_encode)
+        .collect::<Vec<_>>()
+        .join("/"))
+}
+
 /// Percent-encodes everything except RFC 3986 unreserved characters; a
 /// whole `.` or `..` segment is encoded too, so it cannot be normalised away.
 fn percent_encode(value: &str) -> String {
@@ -604,5 +690,21 @@ mod tests {
         assert_eq!(percent_encode("release/1.0+build"), "release%2F1.0%2Bbuild");
         assert_eq!(percent_encode("../x"), "..%2Fx");
         assert_eq!(percent_encode(".."), "%2E%2E");
+    }
+
+    #[test]
+    fn tag_ref_paths_keep_separators_and_refuse_empty_segments() {
+        assert_eq!(
+            encode_ref_path("release/1.0+b"),
+            Ok("release/1.0%2Bb".to_owned())
+        );
+        assert_eq!(encode_ref_path("a/../b"), Ok("a/%2E%2E/b".to_owned()));
+        for tag in ["", "/v1", "v1/", "a//b", "bad\ntag"] {
+            assert_eq!(
+                encode_ref_path(tag),
+                Err(GitHubError::InvalidArgument("tag")),
+                "{tag:?}"
+            );
+        }
     }
 }

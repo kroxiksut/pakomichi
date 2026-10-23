@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# P3-002a synthetic fixtures (TEST ONLY): id|name|version|publisher|depends
+# The installed family comes from the Strict logical repository; every other
+# repository offers a higher version of one of its members.
+sampleapp-1.0-strict|sampleapp|1.0-1|pakomichi-strict|sampleapp-helper (>= 1.0)
+helper-1.0-strict|sampleapp-helper|1.0-1|pakomichi-strict|
+sampleapp-1.2-pinned|sampleapp|1.2-1|pakomichi-pinned|
+sampleapp-1.1-other|sampleapp|1.1-1|other|sampleapp-helper (>= 1.1)
+helper-1.1-other|sampleapp-helper|1.1-1|other|
+helper-1.3-distro|sampleapp-helper|1.3-1|distro|

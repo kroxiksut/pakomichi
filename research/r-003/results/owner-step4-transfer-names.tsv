@@ -1,0 +1,6 @@
+label	requested_name	http_status	resolved_full_name	resolved_repository_id	resolved_owner_id	fork	parent_repository_id	redirected	same_repository_as_certificate	same_owner_as_certificate
+original name	kroxiksut/pchi-test	200	kroxiksut/pchi-test	1429307950	2264172	False		no	NO	yes
+current name	pchi-test-org/pchi-test-renamed	200	pchi-test-org/pchi-test-renamed	1429109739	346117935	False		no	yes	NO
+extra name	kroxiksut/pchi-test-renamed	200	pchi-test-org/pchi-test-renamed	1429109739	346117935	False		yes	yes	NO
+by repository ID	/repositories/1429109739	200	pchi-test-org/pchi-test-renamed	1429109739	346117935	False		n/a	yes	NO
+step 1 release by repository ID	v0.1.0	200		420324447				n/a	n/a	immutable=True

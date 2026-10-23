@@ -29,12 +29,14 @@ libc = { version = "=0.2.191", default-features = false }
 # ADR-017: RPM header inspection only. Default features stay off: no payload,
 # no decompression (so no flate2/zlib-rs), no signature crates.
 rpm = { version = "=0.30.2", default-features = false }
-# ADR-017: Tokio only for the long-lived network process (GitHub I/O here).
-tokio = { version = "=1.53.3", default-features = false, features = ["net", "rt", "time"] }
+# ADR-017: Tokio only for the long-lived network processes (GitHub I/O and
+# the loopback repository reader).
+tokio = { version = "=1.53.3", default-features = false, features = ["net", "rt", "sync", "time"] }
 # P2-001 HTTP stack (docs/en/architecture/overview.md, "HTTP and TLS
 # stack"): one HTTP/1.1 connection per request, no pool, no automatic
-# redirects, no proxy, no decompression.
-hyper = { version = "=1.12.0", default-features = false, features = ["client", "http1"] }
+# redirects, no proxy, no decompression. `server`: the loopback repository
+# reader (HTTP/1.1 only, P3-005a).
+hyper = { version = "=1.12.0", default-features = false, features = ["client", "http1", "server"] }
 hyper-util = { version = "=0.1.21", default-features = false, features = ["tokio"] }
 http-body-util = { version = "=0.1.5", default-features = false }
 # TLS for the API client: rustls with the `ring` provider (no aws-lc-rs, so
@@ -53,6 +55,21 @@ rusqlite = { version = "=0.40.2", default-features = false, features = ["backup"
 # is still unstable (peer_credentials_unix_socket), and the workspace denies
 # unsafe code. Unix only, default features off, only `socket`.
 nix = { version = "=0.31.3", default-features = false, features = ["socket"] }
+# ADR-017 point 6: systemd socket activation for the repository reader.
+listenfd = { version = "=1.0.2", default-features = false }
+# ADR-030: the production attestation verifier (sigstore-rust), every crate
+# pinned exactly and without default features (no aws-lc-rs, no HTTP
+# client); cryptography comes from Pakomichi's `ring` provider.
+sigstore-verify = { version = "=0.15.0", default-features = false }
+sigstore-crypto = { version = "=0.15.0", default-features = false }
+sigstore-trust-root = { version = "=0.15.0", default-features = false }
+sigstore-types = { version = "=0.15.0", default-features = false }
+# ADR-030 point 8: TUF refresh of the trusted roots over Pakomichi's own
+# HTTP stack (no reqwest, no aws-lc).
+sigstore-tuf = { version = "=0.15.0", default-features = false }
+# Timestamps for TUF expiry checks; already in the graph through sigstore-*.
+jiff = { version = "=0.2.38", default-features = false, features = ["std"] }
+ring = { version = "=0.17.14", default-features = false, features = ["alloc"] }
 # TEST ONLY: generates throwaway certificates for the loopback TLS tests.
 rcgen = { version = "=0.14.10", default-features = false, features = ["crypto", "ring"] }
 
@@ -77,11 +94,19 @@ http-body-util.workspace = true
 rustls.workspace = true
 tokio-rustls.workspace = true
 rustls-native-certs.workspace = true
+sigstore-verify.workspace = true
+sigstore-crypto.workspace = true
+sigstore-trust-root.workspace = true
+sigstore-types.workspace = true
+sigstore-tuf.workspace = true
+jiff.workspace = true
+ring.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true
 rusqlite.workspace = true
 nix.workspace = true
+listenfd.workspace = true
 
 # TEST ONLY: the RPM builder writes uncompressed fixtures at test time; the
 # production reader never enables `payload` or a compression feature.
@@ -89,6 +114,9 @@ nix.workspace = true
 rpm = { workspace = true, features = ["payload"] }
 tokio = { workspace = true, features = ["io-util", "macros"] }
 rcgen.workspace = true
+# TEST ONLY: rewrites attestation payloads in the verifier's negative tests
+# (already in the graph through sigstore-types).
+base64 = { version = "=0.23.1", default-features = false, features = ["alloc"] }
 
 [lib]
 path = "src/lib.rs"

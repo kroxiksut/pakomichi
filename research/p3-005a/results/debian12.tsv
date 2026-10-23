@@ -1,0 +1,11 @@
+G1	PASS	publish g1 through GenerationStore, update, install: rc=0 version=1.0 generation=1
+G2	PASS	switch g1->g2 between the signed file and its indexes (1 held): update rc=0, client holds g1 metadata; responses:  2 status=200 
+G3	PASS	control, client without By-Hash: update rc=100;   Hash Sum mismatch (a failure here is the expected outcome)
+G4	PASS	control, retention 0: update rc=100; E: Failed to fetch http://127.0.0.1:18081/alpha/dists/stable/main/binary-amd64/Packages.gz  File has unexpected size (236 != 235). Mirror sync in progress? [IP: 127.0.0.1 18081]; responses:  2 status=200  1 status=404  (a failure here is the expected outcome)
+G5	PASS	package of a superseded generation: old path serves old bytes=yes; install rc=0 version=1.0 (metadata refreshed first: no); after update+upgrade version=3.0
+G6	PASS	536 client updates in 67 rounds of 8 parallel while 16 generations were published: failed=0, succeeded with inconsistent metadata=0 
+H1	PASS	N-025: POST=405 PUT=405 DELETE=405 PATCH=405 (allow: GET, HEAD); current unchanged: 24 -> 24
+H2	PASS	GET=200, foreign Host=400, ../=404, %2e%2e=404, GET with a body=400
+H3	PASS	N-017: changed package object: GET=500, body starts ' o b j e c t u n a v a i l a b
+ l e \n'; client install rc=100; log: event=object-refused target=/alpha/pool/ffacd63b039e32e83310dca05760ced1cac02e4176ec96d3a7531676007f99d1/p3005a-sampleapp_2.0_all.deb
+H4	PASS	reader process user=pakomichi-reader (pid 840); write into the publish root as the reader: refused

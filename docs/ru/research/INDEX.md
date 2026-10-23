@@ -6,11 +6,12 @@
 
 - [R-001: приоритеты и конфликты APT/DNF](R-001-source-selection.md); выполнен: [отчёт R-001](R-001-report.md)
 - [R-002: подпись RPM и политика DNF](R-002-rpm-signatures.md); [отчёт R-002](R-002-report.md) (PASS на AlmaLinux 9 и Fedora 44)
-- [R-003: GitHub immutable и attestations](R-003-github-provenance.md)
+- [R-003: GitHub immutable и attestations](R-003-github-provenance.md); [отчёт R-003](R-003-report.md) (PASS; внешние объекты только для чтения и тестовый репозиторий владельца)
 - [R-004: локальная доставка и снимки](R-004-delivery-failure.md); [отчёт R-004](R-004-report.md) (PASS для Debian 12, AlmaLinux 9 и Fedora 44)
 - [R-005: доказательства происхождения в реальных репозиториях](R-005-provenance-survey.md) (входные данные для предложенного ADR-018); [отчёт R-005](R-005-report.md) (PASS протокола; 100 репозиториев и проверенная подвыборка из 20)
 - [R-006: защищённые уровни Astra Linux](R-006-astra-protected-modes.md); [отчёт R-006](R-006-report.md) (PASS для Astra Linux 1.8.6)
-- [R-007: Windows — MSI-пакеты через локальный источник WinGet](R-007-windows-msi-winget.md) (не блокирует 0.1; только протокол, не выполнялся)
+- [R-007: Windows — MSI-пакеты через локальный источник WinGet](R-007-windows-msi-winget.md) (не блокирует 0.1; часть без повышения прав выполнена 22.10.2026, отчёта пока нет)
+- [R-008: источники пакетов — где публикуют разработчики и что это значит для архитектуры](R-008-package-sources.md) (не блокирует 0.1); [отчёт R-008](R-008-report.md) (фаза A завершена; ещё не PASS)
 - [План синтетических тестовых артефактов](test-fixtures-plan.md)
 - [Шаблон отчёта](RESULT-TEMPLATE.md)
 

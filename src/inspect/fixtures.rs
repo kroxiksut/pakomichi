@@ -177,3 +177,30 @@ fn put(field: &mut [u8], value: &[u8]) {
     let length = value.len().min(field.len());
     field[..length].copy_from_slice(&value[..length]);
 }
+
+/// A DEB inspection of an uncompressed package whose control file is
+/// `control`, as the Linux inspector would return it.
+pub(crate) fn deb_inspection(control: &str) -> Result<super::DebInspection, super::InspectError> {
+    let (control_tar, data_tar) = minimal_deb_members(control);
+    let package = ar(&[
+        ("debian-binary", b"2.0\n"),
+        ("control.tar", &control_tar),
+        ("data.tar", &data_tar),
+    ]);
+    let limits = super::InspectLimits::default();
+    let format = super::ar::read_layout(
+        &mut std::io::Cursor::new(&package),
+        package.len() as u64,
+        &limits,
+    )?;
+    super::deb::inspect_control_tar(format, &control_tar, &limits)
+}
+
+/// An RPM inspection of the package `bytes`.
+pub(crate) fn rpm_inspection(bytes: &[u8]) -> Result<super::RpmInspection, super::InspectError> {
+    super::rpm_reader::inspect_rpm(
+        &mut std::io::Cursor::new(bytes),
+        bytes.len() as u64,
+        &super::InspectLimits::default(),
+    )
+}

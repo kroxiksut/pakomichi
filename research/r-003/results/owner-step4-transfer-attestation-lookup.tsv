@@ -1,0 +1,24 @@
+time_utc	endpoint	subject	http_or_count	note
+2026-10-22T06:10:09Z	repos/pchi-test-org/pchi-test-renamed/attestations	sha256:8fcda58d…	404	repository endpoint after transfer
+2026-10-22T06:10:09Z	repositories/1429109739/attestations	sha256:8fcda58d…	404	same repository by ID
+2026-10-22T06:10:09Z	orgs/pchi-test-org/attestations	sha256:8fcda58d…	404	new owner
+2026-10-22T06:10:09Z	users/kroxiksut/attestations	sha256:8fcda58d…	2 attestations, repository_id 1429109739	previous owner keeps them
+2026-10-22T06:10:09Z	repos/pchi-test-org/pchi-test-renamed/attestations	sha1:6ee0f9f5…	404	release attestation by tag commit
+2026-10-22T06:51:57Z	repos/pchi-test-org/pchi-test-renamed/attestations	sha256:8fcda58d…	404	recheck about 40 min after the transfer
+2026-10-22T06:51:57Z	repositories/1429109739/attestations	sha256:8fcda58d…	404	recheck
+2026-10-22T06:51:57Z	orgs/pchi-test-org/attestations	sha256:8fcda58d…	404	recheck
+2026-10-22T06:51:57Z	users/kroxiksut/attestations	sha256:8fcda58d…	2 attestations, repository_id 1429109739	recheck: still under the previous owner
+2026-10-22T06:51:57Z	repos/kroxiksut/pchi-test-fork/attestations	sha256:d3c6baed…	1 attestation	control: the fork's own lookup works
+2026-10-22T06:51:57Z	gh release verify v0.1.0 -R pchi-test-org/pchi-test-renamed	-	failure	no attestations for tag v0.1.0 (sha1:6ee0f9f5…)
+2026-10-22T10:16:26Z	repos/pchi-test-org/pchi-test-renamed/attestations	sha256:8fcda58d…	404	recheck about 4 h after the transfer (token)
+2026-10-22T10:16:26Z	repositories/1429109739/attestations	sha256:8fcda58d…	404	recheck about 4 h after the transfer (token)
+2026-10-22T10:16:26Z	orgs/pchi-test-org/attestations	sha256:8fcda58d…	404	recheck about 4 h after the transfer (token)
+2026-10-22T10:16:26Z	users/kroxiksut/attestations	sha256:8fcda58d…	2 attestations, repository_id 1429109739	recheck about 4 h after the transfer: still under the previous owner
+2026-10-22T10:16:14Z	repos/pchi-test-org/pchi-test-renamed/attestations	sha1:6ee0f9f5…	404	recheck about 4 h after the transfer (anonymous)
+2026-10-23T00:50:02Z	repos/pchi-test-org/pchi-test-renamed/attestations	sha256:8fcda58d…	404	recheck about 19 h after the transfer (token, gh 2.103.0)
+2026-10-23T00:50:02Z	repositories/1429109739/attestations	sha256:8fcda58d…	404	recheck about 19 h after the transfer (token)
+2026-10-23T00:50:02Z	orgs/pchi-test-org/attestations	sha256:8fcda58d…	404	recheck about 19 h after the transfer (token)
+2026-10-23T00:50:02Z	users/kroxiksut/attestations	sha256:8fcda58d…	2 attestations, repository_id 1429109739	recheck about 19 h after the transfer: still under the previous owner
+2026-10-23T00:50:02Z	repos/pchi-test-org/pchi-test-renamed/attestations	sha1:6ee0f9f5…	404	recheck about 19 h after the transfer (token)
+2026-10-23T00:50:02Z	repos/kroxiksut/pchi-test-fork/attestations	sha256:d3c6baed…	1 attestation, repository_id 1429309242	control: the fork's own lookup works
+2026-10-23T00:50:02Z	gh release verify v0.1.0 -R pchi-test-org/pchi-test-renamed	-	failure	no attestations for tag v0.1.0 (sha1:6ee0f9f5…)

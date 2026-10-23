@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# P3-005a test unit: the read-only repository reader. It reads the stores
+# through the writer's group and can write nothing. Scenario settings come
+# from drop-ins in /run/systemd/system/pakomichi-reader.service.d/.
+
+[Unit]
+Description=Pakomichi repository reader (P3-005a test)
+Requires=pakomichi-reader.socket
+After=pakomichi-reader.socket
+
+[Service]
+Type=exec
+ExecStart=/usr/local/bin/pakomichi-reader --publish-root /var/lib/pakomichi/publish --cas-root /var/lib/pakomichi/cas
+User=pakomichi-reader
+Group=pakomichi-reader
+SupplementaryGroups=pakomichi
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectProc=invisible
+ProtectSystem=strict
+ReadOnlyPaths=/var/lib/pakomichi
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0077

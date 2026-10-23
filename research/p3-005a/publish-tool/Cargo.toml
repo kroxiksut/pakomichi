@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# P3-005a research tool: publishes a signed repository tree (as written by
+# research/r-004/make_repo.py) as one generation through the production
+# GenerationStore and CAS. Research tooling only; the index publishers of
+# P3-001/P3-003 replace it. Built by research/p3-005a/build.sh.
+
+[package]
+name = "pakomichi-p3005a-publish"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.94.1"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace]
+resolver = "3"
+
+[dependencies]
+pakomichi = { path = "../../.." }
+
+[profile.release]
+debug = false
+strip = true
+
+[lints.rust]
+unsafe_code = "deny"

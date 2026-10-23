@@ -3,7 +3,10 @@
 //! GitHub Releases adapter: identity pinning and the REST client (P2-001).
 //!
 //! Contract: `docs/en/specifications/github.md`. A source is pinned to its
-//! numeric repository ID and owner ID (`identity`); responses are parsed
+//! numeric repository ID and every confirmed owner ID (`identity`); admitted
+//! assets are pinned as (release ID, asset ID, SHA-256) and release
+//! attestation claims are checked against the expected release
+//! (`release_pin`, R-003); responses are parsed
 //! into validated types (`wire`, ADR-019 point 3); the client handles
 //! conditional requests (`conditional`, R-004 conclusion 14), rate limits
 //! (`rate_limit`), and pagination (`pagination`) over a [`Transport`]. The
@@ -16,6 +19,7 @@ mod http;
 mod identity;
 mod pagination;
 mod rate_limit;
+mod release_pin;
 mod tls;
 mod token;
 mod transport;
@@ -36,6 +40,10 @@ pub use pagination::PaginationError;
 pub use rate_limit::{
     Clock, MAX_WAIT, QuotaSnapshot, RateLimitKind, RateLimited, SECONDARY_BASE_WAIT, SystemClock,
 };
+pub use release_pin::{
+    AssetCheck, AssetPin, BytesMutated, CurrentAssetError, ExpectedRelease, GitObjectId,
+    InvalidObjectId, NamedSubject, ReleaseClaims, ReleaseMismatch, current_asset,
+};
 pub use tls::{RustlsConnector, TlsSetupError};
 pub use token::{CredentialId, MAX_TOKEN_BYTES, Token, TokenError};
 pub use transport::{
@@ -43,6 +51,7 @@ pub use transport::{
     TransportError,
 };
 pub use wire::{
-    MAX_ASSETS_PER_RELEASE, MAX_RELEASES_PER_PAGE, MAX_RESPONSE_BYTES, Release, ReleaseAsset,
-    WireError, parse_release, parse_release_page, parse_repository,
+    AnnotatedTag, MAX_ASSETS_PER_RELEASE, MAX_RELEASES_PER_PAGE, MAX_RESPONSE_BYTES, Release,
+    ReleaseAsset, TagObjectKind, TagRef, WireError, parse_release, parse_release_page,
+    parse_repository, parse_tag_object, parse_tag_ref,
 };

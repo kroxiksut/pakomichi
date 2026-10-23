@@ -6,10 +6,13 @@
 # (the ADR-017 reference oracle). Runs as root inside the distribution only.
 set -euo pipefail
 
-readonly gh_version="2.95.0"
-# Same pin as prototypes/p0-004/verify-github-attestation.sh, where this
-# tarball was itself verified against its cli/cli build attestation.
-readonly gh_sha256="25d1e4729e8808c9ed3d613e96ebd3f3e44446f2d368c89d878a71a36ddb3d8c"
+readonly gh_version="2.103.0"
+# Verified on 2026-10-22 by verify-gh-pin.sh with the previous pin (2.95.0)
+# against its cli/cli build provenance and release attestation
+# (results/gh-pin-verify-2.103.0.tsv). 2.95.0 had attestation-matching flaws
+# fixed in 2.97.0 (GHSA-mm27-mwq9-fr5g) and 2.102.0 (GHSA-wjmr-j3rp-mh2g,
+# GHSA-4mq3-hpgx-9cx8); the same pin as verifier-probe-oracle.sh.
+readonly gh_sha256="fdd768eb70f6409f80fcfa9f3a1c0adf0fc98d827ab3ce0bed2ac22762c5d786"
 readonly gh_prefix="/opt/r003-gh"
 
 if [[ "$(id -u)" -ne 0 ]]; then
@@ -53,6 +56,7 @@ fi
 rm -rf "$gh_prefix"
 mkdir -p "$gh_prefix"
 tar -xzf "$tarball" -C "$gh_prefix" --strip-components=1 --no-same-owner
+printf '%s\n' "$actual" > "$gh_prefix/TARBALL-SHA256"
 chmod -R go-w "$gh_prefix"
 
 echo "os=${PRETTY_NAME}"
