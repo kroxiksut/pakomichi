@@ -73,10 +73,11 @@ pub enum ReasonCode {
     ESecurityContext,
     EChannelUnclear,
     ESystemNamespaceUnknown,
+    ENameProvidedElsewhere,
 }
 
 impl ReasonCode {
-    pub const ALL: [Self; 23] = [
+    pub const ALL: [Self; 24] = [
         Self::ERepoIdChanged,
         Self::EOwnerTransfer,
         Self::EAssetMutated,
@@ -100,6 +101,7 @@ impl ReasonCode {
         Self::ESecurityContext,
         Self::EChannelUnclear,
         Self::ESystemNamespaceUnknown,
+        Self::ENameProvidedElsewhere,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -127,6 +129,7 @@ impl ReasonCode {
             Self::ESecurityContext => "E_SECURITY_CONTEXT",
             Self::EChannelUnclear => "E_CHANNEL_UNCLEAR",
             Self::ESystemNamespaceUnknown => "E_SYSTEM_NAMESPACE_UNKNOWN",
+            Self::ENameProvidedElsewhere => "E_NAME_PROVIDED_ELSEWHERE",
         }
     }
 }

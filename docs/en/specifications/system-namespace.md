@@ -48,6 +48,8 @@ The collector runs unprivileged and reads only what the native managers already 
 - Every tool runs without a shell, with a cleared environment (`PATH`, `LC_ALL=C`, and `HOME` only for `dnf`), standard input closed, a 300-second deadline, and a 512 MiB output cap; a failure, a timeout, or too much output makes the namespace unknown.
 - Missing metadata of a distribution source (no Release file, no index, no DNF cache) is reported as missing metadata with the source named; a system with no enabled distribution source at all is reported as such. Both hold with `E_SYSTEM_NAMESPACE_UNKNOWN`.
 
+The same pass also reads the versions and versioned `Provides` of these packages, and of every other enabled source except Pakomichi's own, for the operating system compatibility check (P2-008b, `architecture/families-compatibility.md`); a name of this namespace is satisfied only by the distribution and installed packages.
+
 ## Freshness and unknown state
 
 The namespace is computed again on every synchronization and whenever the OS inventory changes (P2-008). If the metadata of an enabled distribution source is missing or unreadable (before the first `apt update` or `dnf makecache`, after `dnf clean all`, damaged lists), the namespace is unknown: unknown never means "no conflict" (owner decision 3).

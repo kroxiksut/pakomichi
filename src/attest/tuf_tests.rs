@@ -348,7 +348,7 @@ mod transport {
     impl Resolve for Loopback {
         async fn resolve(
             &self,
-            _host: &'static str,
+            _host: &str,
             _port: u16,
         ) -> Result<Vec<SocketAddr>, TransportError> {
             Ok(vec![self.0])
@@ -363,7 +363,7 @@ mod transport {
 
         async fn connect(
             &self,
-            _host: &'static str,
+            _host: &str,
             address: SocketAddr,
         ) -> Result<TcpStream, TransportError> {
             TcpStream::connect(address)

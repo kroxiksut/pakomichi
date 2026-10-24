@@ -6,10 +6,11 @@
 //! belongs to the family and dependency model.
 
 use super::InspectLimits;
-use super::ar::DebFormat;
+use super::ar::{Compression, DebFormat};
 use super::control::{Field, parse_paragraph};
 use super::error::InspectError;
 use super::tar::{EntryKind, read_control_tar};
+use crate::ipc::channels::{DebFormatWire, DebInspected};
 
 const MAX_VERSION_BYTES: usize = 256;
 
@@ -117,6 +118,12 @@ impl DebControl {
             .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
     }
 
+    /// A control paragraph from text, for tests of the index publishers.
+    #[cfg(test)]
+    pub(crate) fn from_text(text: &str) -> Result<Self, InspectError> {
+        Self::from_fields(parse_paragraph(text.as_bytes(), &InspectLimits::default())?)
+    }
+
     pub(crate) fn from_fields(fields: Vec<Field>) -> Result<Self, InspectError> {
         let fields: Vec<(String, String)> = fields
             .into_iter()
@@ -199,6 +206,94 @@ impl DebInspection {
 
     pub fn has_maintainer_scripts(&self) -> bool {
         !self.maintainer_scripts.is_empty()
+    }
+
+    /// The message an inspector instance answers with (ADR-035).
+    pub fn to_wire(&self) -> DebInspected {
+        let format = &self.format;
+        DebInspected {
+            format: DebFormatWire {
+                version: format.version().to_owned(),
+                control_compression: format.control_compression().as_str().to_owned(),
+                control_member_bytes: format.control_member_bytes(),
+                data_compression: format.data_compression().as_str().to_owned(),
+                data_member_bytes: format.data_member_bytes(),
+                ignored_members: format.ignored_members().to_vec(),
+            },
+            fields: self.control.fields().to_vec(),
+            control_members: self.control_members.clone(),
+            maintainer_scripts: self
+                .maintainer_scripts
+                .iter()
+                .map(|script| script.as_str().to_owned())
+                .collect(),
+        }
+    }
+
+    /// Reads an instance's answer back. The control paragraph is validated
+    /// again by the same rules as a parsed one, and every other value must
+    /// be one the inspector can produce; the answer is not trusted as is.
+    pub fn from_wire(wire: DebInspected) -> Result<Self, InspectError> {
+        let refused = |problem| InspectError::MalformedControlArchive { problem };
+        let compression =
+            |name: &str| Compression::from_name(name).ok_or(refused("unknown compression"));
+        let format = DebFormat::from_parts(
+            wire.format.version,
+            compression(&wire.format.control_compression)?,
+            wire.format.control_member_bytes,
+            compression(&wire.format.data_compression)?,
+            wire.format.data_member_bytes,
+            wire.format.ignored_members,
+        );
+        // Rendered back and parsed by the same strict parser: a value with
+        // a bare line break (a field smuggled into the paragraph) or any
+        // other text the parser would not produce is refused.
+        let mut text = String::new();
+        for (name, value) in &wire.fields {
+            text.push_str(name);
+            text.push(':');
+            if !value.is_empty() && !value.starts_with('\n') {
+                text.push(' ');
+            }
+            text.push_str(value);
+            text.push('\n');
+        }
+        let fields = parse_paragraph(text.as_bytes(), &InspectLimits::default())?;
+        let same = fields.len() == wire.fields.len()
+            && fields
+                .iter()
+                .zip(&wire.fields)
+                .all(|(parsed, (name, value))| parsed.name == *name && parsed.value == *value);
+        if !same {
+            return Err(refused("control fields are not a parsed paragraph"));
+        }
+        let control = DebControl::from_fields(fields)?;
+        // The scripts follow from the control members, as in the parser;
+        // a list that hides one (a `postinst` among the members) is refused.
+        let maintainer_scripts: Vec<MaintainerScript> = MaintainerScript::ALL
+            .into_iter()
+            .filter(|script| {
+                wire.control_members
+                    .iter()
+                    .any(|name| name == script.as_str())
+            })
+            .collect();
+        let reported: Vec<&str> = wire.maintainer_scripts.iter().map(String::as_str).collect();
+        let derived: Vec<&str> = maintainer_scripts
+            .iter()
+            .map(|script| script.as_str())
+            .collect();
+        if reported != derived {
+            return Err(refused(
+                "maintainer scripts do not match the control members",
+            ));
+        }
+        Ok(Self {
+            format,
+            control,
+            control_members: wire.control_members,
+            maintainer_scripts,
+        })
     }
 }
 
@@ -446,3 +541,7 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "wire_tests.rs"]
+mod wire_tests;

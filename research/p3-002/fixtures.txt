@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# P3-002 TEST ONLY fixtures: name|version|publisher|depends
+# strict and pinned are the two Pakomichi levels of one source; distro is
+# the distribution (its own distapp and a security update of the helper);
+# other is another publisher, which also offers eqapp 1.0-1 with other bytes.
+sampleapp|1.0-1|strict|sampleapp-helper (>= 1.0)
+sampleapp-helper|1.0-1|strict|
+eqapp|1.0-1|strict|
+distapp|2.0-1|strict|
+freeapp|1.0-1|strict|
+sampleapp|1.2-1|pinned|
+distapp|1.0-1|distro|
+sampleapp-helper|1.3-1|distro|
+sampleapp|1.1-1|other|sampleapp-helper (>= 1.1)
+sampleapp-helper|1.1-1|other|
+eqapp|1.0-1|other|

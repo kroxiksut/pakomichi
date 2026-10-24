@@ -69,6 +69,7 @@ fn every_documented_reason_code_has_a_stable_wire_value() {
         "E_SECURITY_CONTEXT",
         "E_CHANNEL_UNCLEAR",
         "E_SYSTEM_NAMESPACE_UNKNOWN",
+        "E_NAME_PROVIDED_ELSEWHERE",
     ];
 
     assert_eq!(expected, actual.as_slice());

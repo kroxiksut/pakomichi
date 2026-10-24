@@ -1,0 +1,7 @@
+id	case	exit	output	verdict
+L0	current asset, default address policy, fake-IP DNS on this host	3	failed 502 resolved address is not public	PASS
+L1	current asset, pinned digest and size	0	stored a59a5cfd27b6b5090de79452c96ca6526cfddda93b1b2fab559f08ac8bdf41f9	PASS
+L2	current asset, another pinned digest (same size)	3	failed 502 digest mismatch: expected 0000000000000000000000000000000000000000000000000000000000000001, got a59a5cfd27b6b5090de79452c96ca6526cfddda93b1b2fab559f08ac8bdf41f9	PASS
+L3	asset deleted in R-003 step 3 (N-014)	3	failed 502 asset is gone (HTTP 404)	PASS
+L4	current asset, another pinned size	3	failed 502 announced 800 bytes, pinned 799	PASS
+L5	no asset host allowed: the redirect target is named and refused	3	failed 502 redirect to a host that is not an asset host: release-assets.githubusercontent.com	PASS

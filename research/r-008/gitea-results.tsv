@@ -1,0 +1,73 @@
+experiment	step	request	http_status	observed	note
+E1	create org pchi-test-gitea-a	POST /orgs	201	id=259409 username=pchi-test-gitea-a visibility=public	
+E1	create org pchi-test-gitea-b	POST /orgs	201	id=259410 username=pchi-test-gitea-b visibility=public	
+E1	create repo	POST /orgs/A/repos	201	id=148572 owner.id=259409 full_name=pchi-test-gitea-a/pchi-test has_actions=True has_packages=False has_releases=True default_branch=main	
+IDENT	commit identity pchi-test-gitea-a/pchi-test	GET git/commits/<sha>	200	author/committer e-mails = ['kroxiksut@noreply.gitea.com']	OK
+E1	first commit	POST contents/README.md	201	commit sha=7bfa7eca73b499a074fbd1ef4f3c86177ed9926d	
+E1	by name anonymous	GET /repos/pchi-test-gitea-a/pchi-test	200	id=148572 owner.id=259409 full_name=pchi-test-gitea-a/pchi-test has_actions=True has_packages=False has_releases=True default_branch=main	cache-control=max-age=0, private, must-revalidate; content-type=application/json;charset=utf-8; ratelimit={}
+E1	by name anonymous validators	GET /repos/pchi-test-gitea-a/pchi-test	200	no ETag and no Last-Modified	
+E1	by name token	GET /repos/pchi-test-gitea-a/pchi-test	200	id=148572 owner.id=259409 full_name=pchi-test-gitea-a/pchi-test has_actions=True has_packages=False has_releases=True default_branch=main	cache-control=max-age=0, private, must-revalidate; content-type=application/json;charset=utf-8; ratelimit={}
+E1	by name token validators	GET /repos/pchi-test-gitea-a/pchi-test	200	no ETag and no Last-Modified	
+E1	by id anonymous	GET /repositories/148572	401	{"message":"token is required","url":"https://gitea.com/api/swagger"}	cache-control=max-age=0, private, must-revalidate; content-length=69; content-type=application/json;charset=utf-8; ratelimit={}
+E1	by id anonymous validators	GET /repositories/148572	401	no ETag and no Last-Modified	
+E1	by id token	GET /repositories/148572	200	id=148572 owner.id=259409 full_name=pchi-test-gitea-a/pchi-test has_actions=True has_packages=False has_releases=True default_branch=main	cache-control=max-age=0, private, must-revalidate; content-type=application/json;charset=utf-8; ratelimit={}
+E1	by id token validators	GET /repositories/148572	200	no ETag and no Last-Modified	
+E2	rename	PATCH /repos/A/pchi-test	200	id=148572 owner.id=259409 full_name=pchi-test-gitea-a/pchi-test-renamed has_actions=True has_packages=False has_releases=True default_branch=main	
+E2	new name	GET /repos/A/pchi-test-renamed	200	id=148572 owner.id=259409 full_name=pchi-test-gitea-a/pchi-test-renamed has_actions=True has_packages=False has_releases=True default_branch=main (id before=148572)	
+E2	old name API anonymous	GET /repos/A/pchi-test	301	location=/api/v1/repos/pchi-test-gitea-a/pchi-test-renamed; <a href="/api/v1/repos/pchi-test-gitea-a/pchi-test-renamed">Moved Permanently</a>.  	
+E2	old name API token	GET /repos/A/pchi-test	301	location=/api/v1/repos/pchi-test-gitea-a/pchi-test-renamed; <a href="/api/v1/repos/pchi-test-gitea-a/pchi-test-renamed">Moved Permanently</a>.  	
+E2	by ID after rename	GET /repositories/<id>	200	id=148572 owner.id=259409 full_name=pchi-test-gitea-a/pchi-test-renamed has_actions=True has_packages=False has_releases=True default_branch=main	
+E2	old web URL	GET /pchi-test-gitea-a/pchi-test (web, no follow)	301	location=/pchi-test-gitea-a/pchi-test-renamed	cache-control=max-age=0, private, must-revalidate
+E2	new web URL	GET /pchi-test-gitea-a/pchi-test-renamed (web, no follow)	200	location=None	cache-control=max-age=0, private, must-revalidate
+E2	old git URL	GET /A/pchi-test.git/info/refs	301	location=/pchi-test-gitea-a/pchi-test-renamed/info/refs?service=git-upload-pack	
+E3	create new repo with old name	POST /orgs/A/repos	201	id=148573 owner.id=259409 full_name=pchi-test-gitea-a/pchi-test has_actions=True has_packages=False has_releases=True default_branch=main	old id=148572
+IDENT	commit identity pchi-test-gitea-a/pchi-test	GET git/commits/<sha>	200	author/committer e-mails = ['kroxiksut@noreply.gitea.com']	OK
+E3	first commit	POST contents/README.md	201	commit sha=dcf06318e2de896cb97bd5d7dd4534e2bc9e2050	
+E3	old name now	GET /repos/A/pchi-test	200	id=148573 owner.id=259409 full_name=pchi-test-gitea-a/pchi-test has_actions=True has_packages=False has_releases=True default_branch=main	new id=148573
+E3	renamed repo	GET /repos/A/pchi-test-renamed	200	id=148572 owner.id=259409 full_name=pchi-test-gitea-a/pchi-test-renamed has_actions=True has_packages=False has_releases=True default_branch=main	
+E3	old ID	GET /repositories/<old id>	200	id=148572 owner.id=259409 full_name=pchi-test-gitea-a/pchi-test-renamed has_actions=True has_packages=False has_releases=True default_branch=main	
+E3	old name web URL	GET /pchi-test-gitea-a/pchi-test (web, no follow)	200	location=None	cache-control=max-age=0, private, must-revalidate
+E4	before	GET /repositories/<id>	200	id=148572 owner.id=259409 full_name=pchi-test-gitea-a/pchi-test-renamed has_actions=True has_packages=False has_releases=True default_branch=main	
+E4	transfer A -> B	POST /repos/A/pchi-test-renamed/transfer	202	id=148572 owner.id=259410 full_name=pchi-test-gitea-b/pchi-test-renamed has_actions=True has_packages=False has_releases=True default_branch=main	
+E4	after, by ID	GET /repositories/<id>	200	id=148572 owner.id=259410 full_name=pchi-test-gitea-b/pchi-test-renamed has_actions=True has_packages=False has_releases=True default_branch=main	
+E4	path /repos/pchi-test-gitea-a/pchi-test-renamed	GET /repos/pchi-test-gitea-a/pchi-test-renamed	301	location=/api/v1/repos/pchi-test-gitea-b/pchi-test-renamed; <a href="/api/v1/repos/pchi-test-gitea-b/pchi-test-renamed">Moved Permanently</a>.  	
+E4	path /repos/pchi-test-gitea-b/pchi-test-renamed	GET /repos/pchi-test-gitea-b/pchi-test-renamed	200	location=None; id=148572 owner.id=259410 full_name=pchi-test-gitea-b/pchi-test-renamed has_actions=True has_packages=False has_releases=True default_branch=main	
+E4	old path anonymous	GET /repos/A/pchi-test-renamed	301	location=/api/v1/repos/pchi-test-gitea-b/pchi-test-renamed	
+E4	old web URL	GET /pchi-test-gitea-a/pchi-test-renamed (web, no follow)	301	location=/pchi-test-gitea-b/pchi-test-renamed	cache-control=max-age=0, private, must-revalidate
+E4	new web URL	GET /pchi-test-gitea-b/pchi-test-renamed (web, no follow)	200	location=None	cache-control=max-age=0, private, must-revalidate
+E4	pending transfer probe	GET /repos/B/.../transfer	405		informational
+E4	org A pchi-test unaffected	GET /repos/A/pchi-test	200	id=148573 owner.id=259409 full_name=pchi-test-gitea-a/pchi-test has_actions=True has_packages=False has_releases=True default_branch=main	
+E5	repo used	-	-	pchi-test-gitea-a/pchi-test id=148573 (the E3 repo created after the rename)	
+E5	create release	POST /releases	201	id=979419 tag=v0.2.0 keys=['assets', 'author', 'body', 'created_at', 'draft', 'html_url', 'id', 'name', 'prerelease', 'published_at', 'tag_name', 'tarball_url', 'target_commitish', 'upload_url', 'url', 'zipball_url']	
+E5	tag ref	GET git/refs/tags/v0.2.0	200	object={"type": "commit", "sha": "dcf06318e2de896cb97bd5d7dd4534e2bc9e2050", "url": "https://gitea.com/api/v1/repos/pchi-test-gitea-a/pchi-test/git/commits/dcf06318e2de896cb97bd5d7dd4534e2bc9e2050"}	
+E5	upload 93b4dc42	POST releases/<id>/assets?name=	201	{"browser_download_url": "https://gitea.com/attachments/f41f0558-572e-4117-a61b-0d268e83c4d4", "created_at": "2026-10-23T04:18:51Z", "download_count": 0, "id": 107471, "name": "pakomichi-r003-fixture_0.2.0_all.deb", "size": 772, "uuid": "f41f0558-572e-4117-a61b-0d268e83c4d4"}	
+E5	asset keys	-	-	['browser_download_url', 'created_at', 'download_count', 'id', 'name', 'size', 'uuid']	digest/hash field present: False
+E5	download after upload	GET browser_download_url	200	chain=[(303, 'https://gitea.com/attachments/f41f0558-572e-4117-a61b-0d268e83c4d4', 'https://<account>.r2.cloudflarestorage.com/<presigned URL redacted, expires in 300 s>'), (200, 'https://<account>.r2.cloudflarestorage.com/<presigned URL redacted, expires in 300 s>', None)]	sha256=93b4dc424c37d0eb0fd464025eed2a7d90c4f2b2d50a83bd7eee5bcc047c56cf expected=93b4dc424c37d0eb0fd464025eed2a7d90c4f2b2d50a83bd7eee5bcc047c56cf; etag="28c900b82d87bdc0c0e3909453cf3baa"; last-modified=Fri, 23 Oct 2026 04:18:51 GMT; content-length=772; content-type=application/vnd.debian.binary-package; digest-like headers={}
+E5	release before replace	GET releases/<id>	200	updated_at=None created_at=2026-10-23T04:18:27Z published_at=2026-10-23T04:18:48Z	keys=['assets', 'author', 'body', 'created_at', 'draft', 'html_url', 'id', 'name', 'prerelease', 'published_at', 'tag_name', 'tarball_url', 'target_commitish', 'upload_url', 'url', 'zipball_url']
+E5	second attachment same name while first exists	POST assets?name=same	201	{"browser_download_url": "https://gitea.com/attachments/d3e2ef0d-1b31-419a-b5fb-865dc5235df0", "created_at": "2026-10-23T04:18:56Z", "download_count": 0, "id": 107472, "name": "pakomichi-r003-fixture_0.2.0_all.deb", "size": 800, "uuid": "d3e2ef0d-1b31-419a-b5fb-865dc5235df0"}	
+E5	asset list after duplicate attempt	GET releases/<id>/assets	200	[[107471, "f41f0558-572e-4117-a61b-0d268e83c4d4", "pakomichi-r003-fixture_0.2.0_all.deb", 772], [107472, "d3e2ef0d-1b31-419a-b5fb-865dc5235df0", "pakomichi-r003-fixture_0.2.0_all.deb", 800]]	
+E5	delete asset 107471	DELETE releases/<id>/assets/<aid>	204		
+E5	delete asset 107472	DELETE releases/<id>/assets/<aid>	204		
+E5	upload a59a5cfd under same name	POST assets?name=	201	{"browser_download_url": "https://gitea.com/attachments/44553680-b530-4b3e-9338-e190f23fd2ec", "created_at": "2026-10-23T04:19:02Z", "download_count": 0, "id": 107473, "name": "pakomichi-r003-fixture_0.2.0_all.deb", "size": 800, "uuid": "44553680-b530-4b3e-9338-e190f23fd2ec"}	
+E5	compare ids	-	-	id 107471 -> 107473; uuid f41f0558-572e-4117-a61b-0d268e83c4d4 -> 44553680-b530-4b3e-9338-e190f23fd2ec; url same: False	url1=https://gitea.com/attachments/f41f0558-572e-4117-a61b-0d268e83c4d4 url2=https://gitea.com/attachments/44553680-b530-4b3e-9338-e190f23fd2ec
+E5	download old url	GET url	404	sha256=7515bf959b73b956ceb967351c7e299cbb3668a53d35f9c770eb72e00d93ced6 (a=93b4dc42.. b=a59a5cfd..)	chain=[(404, 'https://gitea.com/attachments/f41f0558-572e-4117-a61b-0d268e83c4d4', None)]; cache-control=max-age=0, private, must-revalidate; content-length=10; content-type=text/plain; charset=utf-8
+E5	download new url	GET url	200	sha256=a59a5cfd27b6b5090de79452c96ca6526cfddda93b1b2fab559f08ac8bdf41f9 (a=93b4dc42.. b=a59a5cfd..)	chain=[(303, 'https://gitea.com/attachments/44553680-b530-4b3e-9338-e190f23fd2ec', 'https://<account>.r2.cloudflarestorage.com/<presigned URL redacted, expires in 300 s>'), (200, 'https://<account>.r2.cloudflarestorage.com/<presigned URL redacted, expires in 300 s>', None)]; etag="e39b3dacea5679e4115f8a3fa0121015"; last-modified=Fri, 23 Oct 2026 04:19:02 GMT; content-length=800; content-type=application/vnd.debian.binary-package
+E5	release after replace	GET releases/<id>	200	updated_at=None created_at=2026-10-23T04:18:27Z published_at=2026-10-23T04:18:48Z; assets=[[107473, "44553680-b530-4b3e-9338-e190f23fd2ec", 1]]	before updated_at=None
+E5	immutability fields	-	-	release: none; repo: {'release_counter': 0, 'has_releases': True}	release keys: ['assets', 'author', 'body', 'created_at', 'draft', 'html_url', 'id', 'name', 'prerelease', 'published_at', 'tag_name', 'tarball_url', 'target_commitish', 'upload_url', 'url', 'zipball_url']
+E5	trace: activity feeds	GET /repos/pchi-test-gitea-a/pchi-test/activities/feeds	200	5 items; op_types=['publish_release', 'push_tag', 'commit_repo', 'commit_repo', 'create_repo']	
+E5	trace: events	GET /repos/pchi-test-gitea-a/pchi-test/events	404	404 page not found 	
+E5	trace: org-activity	GET /orgs/pchi-test-gitea-a/activities/feeds	200	9 items; op_types=['publish_release', 'push_tag', 'commit_repo', 'commit_repo', 'create_repo', 'rename_repo', 'commit_repo', 'commit_repo', 'create_repo']	
+E5	trace: releases atom	GET /pchi-test-gitea-a/pchi-test/releases.atom	200	len=1086; mentions asset name=False	
+E5	release by tag	GET releases/tags/v0.2.0	200	cache-control=max-age=0, private, must-revalidate; content-length=1838; content-type=application/json;charset=utf-8	
+E7	has_actions field	GET /repos/A/pchi-test	200	has_actions=True	
+E7	actions runs endpoint	GET /repos/A/pchi-test/actions/runs	200	{"workflow_runs":[],"total_count":0}	
+E6	upload 0.1.0	PUT pool/pchi/main/upload	404	Not found. 	sha256=8fcda58d824b4fea8f98e036083f398f497941af4b8c15de5dac02dd900576fd
+E6	probe: debian key, existing org	GET /api/packages/pchi-test-gitea-a/debian/repository.key	404	server=Caddy content-type=text/plain;charset=utf-8 body=b'Not found.\n'	
+E6	probe: debian key, non-existent owner	GET /api/packages/no-such-owner-zzz/debian/repository.key	404	server=Caddy content-type=text/plain;charset=utf-8 body=b'Not found.\n'	
+E6	probe: api/packages root	GET /api/packages/	404	server=Caddy content-type=text/plain;charset=utf-8 body=b'Not found.\n'	
+E6	probe: container /v2/	GET /v2/	404	server=Caddy content-type=text/plain;charset=utf-8 body=b'Not found.\n'	
+E6	probe: org packages web page	GET /pchi-test-gitea-a/-/packages	404	server=Caddy content-type=text/plain;charset=utf-8 body=b'Not found.\n'	
+E6	probe: generic upload (token)	PUT /api/packages/A/generic/...	404	body=b'Not found.\n'	
+E6	server version	GET /api/v1/version	200	{"version":"29.0.0+dev-160-g55186ca39b"}	
+E6	package list endpoint	GET /api/v1/packages/A	200	[]	
+E6	conclusion	-	-	package registry endpoints (/api/packages/...) are not served for any owner or type on gitea.com; E6 could not be run there	same-version/new-bytes question for the Debian registry stays open for gitea.com

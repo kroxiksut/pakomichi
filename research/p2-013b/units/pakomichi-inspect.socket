@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# P2-013b test unit (ADR-035): one inspector instance per connection.
+
+[Unit]
+Description=Pakomichi package inspector socket (P2-013b test)
+
+[Socket]
+ListenStream=/run/pakomichi/inspect.sock
+SocketUser=pakomichi
+SocketMode=0600
+Accept=yes
+MaxConnections=4
+
+[Install]
+WantedBy=sockets.target

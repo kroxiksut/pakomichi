@@ -37,7 +37,7 @@ pub enum PeerRule {
 }
 
 impl PeerRule {
-    const fn admits(self, uid: u32) -> bool {
+    pub(crate) const fn admits(self, uid: u32) -> bool {
         match self {
             Self::AnyUser => true,
             Self::OnlyUid(allowed) => uid == allowed,
@@ -102,13 +102,13 @@ struct Shared<S> {
 
 /// Connection counters of one channel.
 #[derive(Default)]
-struct Counters {
+pub(crate) struct Counters {
     per_uid: HashMap<u32, usize>,
     total: usize,
 }
 
 /// Holds one connection slot; released on drop.
-struct Slot {
+pub(crate) struct Slot {
     counters: Arc<Mutex<Counters>>,
     uid: u32,
 }
@@ -126,7 +126,7 @@ impl Drop for Slot {
     }
 }
 
-fn take_slot(counters: &Arc<Mutex<Counters>>, uid: u32, limits: Limits) -> Option<Slot> {
+pub(crate) fn take_slot(counters: &Arc<Mutex<Counters>>, uid: u32, limits: Limits) -> Option<Slot> {
     let mut guard = counters.lock().unwrap_or_else(PoisonError::into_inner);
     let mine = guard.per_uid.get(&uid).copied().unwrap_or(0);
     if guard.total >= limits.total || mine >= limits.per_uid {

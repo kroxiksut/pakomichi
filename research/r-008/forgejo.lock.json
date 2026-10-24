@@ -1,0 +1,12 @@
+{
+  "version": "17.0.0",
+  "version_banner": "forgejo version 17.0.0+gitea-1.22.0 (release name 17.0.0) built with GNU Make 4.4.1, go1.26.9 : bindata, timetzdata, sqlite, sqlite_unlock_notify",
+  "url": "https://codeberg.org/forgejo/forgejo/releases/download/v17.0.0/forgejo-17.0.0-linux-amd64",
+  "sha256": "5a3b07e124ed70b4e46ee3939515f003bd3cc85352257a9a4607a527251042ca",
+  "sha256_source": "https://codeberg.org/forgejo/forgejo/releases/download/v17.0.0/forgejo-17.0.0-linux-amd64.sha256",
+  "signature": "https://codeberg.org/forgejo/forgejo/releases/download/v17.0.0/forgejo-17.0.0-linux-amd64.asc",
+  "signing_key_fingerprint": "EB114F5E6C0DC2BCDD183550A4B61A2DC5923710",
+  "fingerprint_source": "https://forgejo.org/download/ (section: Verify GPG signature)",
+  "key_fetched_from": "hkps://keys.openpgp.org",
+  "signature_status": "VALIDSIG, primary key fingerprint equals the published one"
+}

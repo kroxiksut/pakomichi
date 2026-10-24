@@ -21,14 +21,20 @@
 //! ADR-020 forbids the bundled library, so the owner is built and tested on
 //! Linux.
 
+#[cfg(unix)]
+mod decisions;
 mod floor;
 #[cfg(unix)]
 mod owner;
 #[cfg(unix)]
 mod owners;
+#[cfg(unix)]
+mod pins;
 #[cfg(all(test, unix))]
-mod test_support;
+pub(crate) mod test_support;
 
+#[cfg(unix)]
+pub use decisions::{DecisionObject, LoggedDecision, Recorded, Replay, replay};
 pub use floor::{
     JSON_FUNCTION, MIN_SQLITE_VERSION, NEWER_THAN_FLOOR, format_version, newer_features,
 };
@@ -36,3 +42,5 @@ pub use floor::{
 pub use owner::{SCHEMA_VERSION, StateError, StateOwner, check_sqlite_version};
 #[cfg(unix)]
 pub use owners::{OwnerConfirmation, OwnerConfirmationKind};
+#[cfg(unix)]
+pub use pins::AssetPinRow;

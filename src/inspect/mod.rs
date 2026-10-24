@@ -37,6 +37,8 @@ mod deb;
 mod error;
 #[cfg(test)]
 pub(crate) mod fixtures;
+#[cfg(target_os = "linux")]
+mod remote;
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 mod rpm_reader;
 #[cfg(target_os = "linux")]
@@ -50,6 +52,8 @@ pub use ar::{Compression, DebFormat};
 pub use control::{ControlError, ControlProblem};
 pub use deb::{DebControl, DebInspection, MaintainerScript};
 pub use error::InspectError;
+#[cfg(target_os = "linux")]
+pub use remote::{RemoteInspectError, SocketInspector, answer_inspect};
 pub use rpm_reader::{
     RPM_HEADER_MAX_BYTES, RPM_HEADER_MAX_ENTRIES, RPM_SIGNATURE_MAX_BYTES,
     RPM_SIGNATURE_MAX_ENTRIES, RpmDependency, RpmDigest, RpmInspection, RpmScriptlet, RpmSignature,

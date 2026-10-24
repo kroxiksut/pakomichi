@@ -285,3 +285,85 @@ fn protected_lists_and_sonames_are_recognised() {
         assert!(!is_soname(other), "{other}");
     }
 }
+
+#[test]
+fn a_deb_paragraph_keeps_its_version_and_versioned_provides() {
+    let index = "Package: libc6\nVersion: 2.36-9+deb12u10\nProvides: libc6-x32-compat (= 2.36), libc-bin-virtual\n\n\
+                 Package: broken\nVersion: 1.0\nProvides: ((\n\n\
+                 Package: noversion\n";
+    let packages: Vec<VersionedPackage> = deb822(index)
+        .iter()
+        .filter_map(|p| deb_versioned(p))
+        .collect();
+    assert_eq!(
+        packages.len(),
+        2,
+        "a paragraph without Version is not a package offer"
+    );
+    assert_eq!(packages[0].name, "libc6");
+    assert_eq!(packages[0].version, "2.36-9+deb12u10");
+    assert_eq!(
+        packages[0].provides,
+        vec![
+            (
+                "libc6-x32-compat".to_owned(),
+                Some((Op::Equal, "2.36".to_owned()))
+            ),
+            ("libc-bin-virtual".to_owned(), None),
+        ]
+    );
+    // A malformed Provides drops the provides, never the package.
+    assert_eq!(packages[1].name, "broken");
+    assert!(packages[1].provides.is_empty());
+}
+
+#[test]
+fn rpm_capabilities_keep_their_constraints() {
+    assert_eq!(
+        rpm_capability("glibc = 2.34-168.el9_6.20"),
+        Some((
+            "glibc".to_owned(),
+            Some((Op::Equal, "2.34-168.el9_6.20".to_owned()))
+        ))
+    );
+    assert_eq!(
+        rpm_capability("libc.so.6(GLIBC_2.34)(64bit)"),
+        Some(("libc.so.6(GLIBC_2.34)(64bit)".to_owned(), None))
+    );
+    assert_eq!(
+        rpm_capability("config(glibc) >= 2.34"),
+        Some((
+            "config(glibc)".to_owned(),
+            Some((Op::GreaterEqual, "2.34".to_owned()))
+        ))
+    );
+    // Not a capability: a stray word, an operator without a version.
+    for line in ["", "glibc ~ 2.34", "glibc =", "glibc = 2.34 extra"] {
+        assert_eq!(rpm_capability(line), None, "{line:?}");
+    }
+}
+
+#[test]
+fn versioned_rpm_output_is_read_with_its_evr() {
+    // `dnf repoquery --qf '@@PKG %{name} %{evr}\n%{provides}\n'` and
+    // `rpm -qa --qf '@@PKG %{NAME} %{EVR}\n[%{PROVIDENEVRS}\n]'`.
+    let output = "@@PKG glibc 2.34-168.el9_6.20\nglibc = 2.34-168.el9_6.20\nlibc.so.6(GLIBC_2.34)(64bit)\n\
+                  @@PKG bash 5.1.8-9.el9\nbash = 5.1.8-9.el9\n/bin/sh\n\
+                  @@PKG lonely\n";
+    let packages = versioned_packages(output);
+    assert_eq!(
+        packages.len(),
+        2,
+        "a header without a version is not an offer"
+    );
+    assert_eq!(packages[0].version, "2.34-168.el9_6.20");
+    assert_eq!(packages[0].provides.len(), 2);
+    assert_eq!(packages[1].provides[1], ("/bin/sh".to_owned(), None));
+    // The namespace reader still sees names only, with or without versions.
+    let names = marked_packages(output);
+    assert_eq!(
+        names.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["bash", "glibc", "lonely"]
+    );
+    assert_eq!(names["glibc"], ["glibc", "libc.so.6(GLIBC_2.34)(64bit)"]);
+}

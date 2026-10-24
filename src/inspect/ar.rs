@@ -33,6 +33,21 @@ pub enum Compression {
 }
 
 impl Compression {
+    pub const ALL: [Self; 6] = [
+        Self::None,
+        Self::Gzip,
+        Self::Xz,
+        Self::Zstd,
+        Self::Bzip2,
+        Self::Lzma,
+    ];
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|compression| compression.as_str() == name)
+    }
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::None => "none",
@@ -95,6 +110,25 @@ impl DebFormat {
     /// (for example, embedded signatures) and anything after the data member.
     pub fn ignored_members(&self) -> &[String] {
         &self.ignored_members
+    }
+
+    /// A format reported by an inspector instance (ADR-035).
+    pub(crate) fn from_parts(
+        version: String,
+        control_compression: Compression,
+        control_member_bytes: u64,
+        data_compression: Compression,
+        data_member_bytes: u64,
+        ignored_members: Vec<String>,
+    ) -> Self {
+        Self {
+            version,
+            control_compression,
+            control_member_bytes,
+            data_compression,
+            data_member_bytes,
+            ignored_members,
+        }
     }
 }
 

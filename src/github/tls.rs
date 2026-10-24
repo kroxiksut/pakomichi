@@ -136,10 +136,10 @@ impl SecureConnector for RustlsConnector {
 
     async fn connect(
         &self,
-        host: &'static str,
+        host: &str,
         address: SocketAddr,
     ) -> Result<Self::Stream, TransportError> {
-        let name = ServerName::try_from(host).map_err(|_| TransportError::Tls)?;
+        let name = ServerName::try_from(host.to_owned()).map_err(|_| TransportError::Tls)?;
         let tcp = TcpStream::connect(address)
             .await
             .map_err(|_| TransportError::Connect)?;

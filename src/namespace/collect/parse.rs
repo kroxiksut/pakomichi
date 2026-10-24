@@ -6,6 +6,8 @@
 
 use std::collections::BTreeMap;
 
+use crate::family::relation::{Clause, DebField, parse_deb_field};
+use crate::family::version::Op;
 use crate::namespace::{PackageRole, deb_relation_name, rpm_relation_name};
 
 /// The package family of a target.
@@ -369,8 +371,13 @@ pub fn marked_packages(output: &str) -> BTreeMap<String, Vec<String>> {
     let mut packages: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut current: Option<String> = None;
     for line in output.lines() {
-        if let Some(name) = line.strip_prefix("@@PKG ") {
-            let name = name.trim().to_owned();
+        if let Some(header) = line.strip_prefix("@@PKG ") {
+            // The header may also carry the version (`@@PKG name evr`).
+            let Some(name) = header.split_whitespace().next() else {
+                current = None;
+                continue;
+            };
+            let name = name.to_owned();
             packages.entry(name.clone()).or_default();
             current = Some(name);
         } else if let (Some(name), Some(provide)) = (&current, rpm_relation_name(line)) {
@@ -446,6 +453,88 @@ pub fn is_soname(capability: &str) -> bool {
     };
     let after = &capability[position + 3..];
     after.is_empty() || after.starts_with(['.', '('])
+}
+
+/// One package as the compatibility check needs it (P2-008b): its name,
+/// its native version, and what it provides with each constraint.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VersionedPackage {
+    pub name: String,
+    pub version: String,
+    pub provides: Vec<(String, Option<(Op, String)>)>,
+}
+
+/// A DEB `Packages` or dpkg `status` paragraph with its version. A
+/// malformed `Provides` keeps the package and drops its provides: the index
+/// belongs to the system, and a missing offer can only hold, never admit.
+pub fn deb_versioned(paragraph: &[(String, String)]) -> Option<VersionedPackage> {
+    let name = field(paragraph, "package")?;
+    let version = field(paragraph, "version")?;
+    let provides = parse_deb_field(DebField::Provides, field(paragraph, "provides"))
+        .unwrap_or_default()
+        .into_iter()
+        .flat_map(|clause| match clause {
+            Clause::Any(atoms) => atoms,
+            Clause::Rich(_) => Vec::new(),
+        })
+        .map(|atom| (atom.name, atom.constraint))
+        .collect();
+    Some(VersionedPackage {
+        name: name.to_owned(),
+        version: version.to_owned(),
+        provides,
+    })
+}
+
+/// One RPM capability as `rpm` and `dnf` print it: `name`, or
+/// `name OP evr` with `OP` one of `<`, `<=`, `=`, `>=`, `>`.
+pub fn rpm_capability(line: &str) -> Option<(String, Option<(Op, String)>)> {
+    let mut parts = line.split_whitespace();
+    let name = parts.next()?.to_owned();
+    let constraint = match (parts.next(), parts.next()) {
+        (None, _) => None,
+        (Some(op), Some(version)) => Some((
+            match op {
+                "<" => Op::Less,
+                "<=" => Op::LessEqual,
+                "=" => Op::Equal,
+                ">=" => Op::GreaterEqual,
+                ">" => Op::Greater,
+                _ => return None,
+            },
+            version.to_owned(),
+        )),
+        (Some(_), None) => return None,
+    };
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((name, constraint))
+}
+
+/// Packages from output made with `--qf '@@PKG %{name} %{evr}\n…'` and one
+/// capability per line (`dnf repoquery … %{provides}` or
+/// `rpm -qa … [%{PROVIDENEVRS}\n]`). A line that is not a capability is
+/// skipped.
+pub fn versioned_packages(output: &str) -> Vec<VersionedPackage> {
+    let mut packages: Vec<VersionedPackage> = Vec::new();
+    for line in output.lines() {
+        if let Some(header) = line.strip_prefix("@@PKG ") {
+            let mut words = header.split_whitespace();
+            if let (Some(name), Some(version)) = (words.next(), words.next()) {
+                packages.push(VersionedPackage {
+                    name: name.to_owned(),
+                    version: version.to_owned(),
+                    provides: Vec::new(),
+                });
+            }
+        } else if let (Some(package), Some(capability)) =
+            (packages.last_mut(), rpm_capability(line))
+        {
+            package.provides.push(capability);
+        }
+    }
+    packages
 }
 
 #[cfg(test)]

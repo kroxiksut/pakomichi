@@ -65,7 +65,7 @@ impl Default for HttpConfig {
 pub trait Resolve: Send + Sync {
     fn resolve(
         &self,
-        host: &'static str,
+        host: &str,
         port: u16,
     ) -> impl Future<Output = Result<Vec<SocketAddr>, TransportError>> + Send;
 }
@@ -74,11 +74,7 @@ pub trait Resolve: Send + Sync {
 pub struct SystemResolver;
 
 impl Resolve for SystemResolver {
-    async fn resolve(
-        &self,
-        host: &'static str,
-        port: u16,
-    ) -> Result<Vec<SocketAddr>, TransportError> {
+    async fn resolve(&self, host: &str, port: u16) -> Result<Vec<SocketAddr>, TransportError> {
         tokio::net::lookup_host((host, port))
             .await
             .map(Iterator::collect)
@@ -94,7 +90,7 @@ pub trait SecureConnector: Send + Sync {
 
     fn connect(
         &self,
-        host: &'static str,
+        host: &str,
         address: SocketAddr,
     ) -> impl Future<Output = Result<Self::Stream, TransportError>> + Send;
 }
@@ -248,7 +244,7 @@ pub fn is_public_address(ip: IpAddr) -> bool {
 }
 
 /// Aborts the connection task when the exchange ends or is cancelled.
-struct AbortOnDrop(JoinHandle<()>);
+pub(crate) struct AbortOnDrop(pub(crate) JoinHandle<()>);
 
 impl Drop for AbortOnDrop {
     fn drop(&mut self) {

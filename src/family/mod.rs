@@ -255,31 +255,38 @@ impl PackageMetadata {
     }
 
     fn offer_matches(&self, offer: &Offer, atom: &Atom) -> bool {
-        let Some((want_op, want)) = &atom.constraint else {
-            return true;
-        };
-        match self.ecosystem {
-            // dpkg: an unversioned Provides never satisfies a versioned
-            // dependency; a versioned one is always `=`.
-            Ecosystem::Deb => match &offer.constraint {
-                Some((Op::Equal, have)) => DebVersion::parse(have)
-                    .ok()
-                    .zip(DebVersion::parse(want).ok())
-                    .is_some_and(|(have, want)| want_op.accepts(have.cmp(&want))),
-                _ => false,
-            },
-            // RPM: an unversioned Provides matches every version; otherwise
-            // the two ranges must overlap.
-            Ecosystem::Rpm => match &offer.constraint {
-                None => true,
-                Some((have_op, have)) => RpmEvr::parse(have)
-                    .ok()
-                    .zip(RpmEvr::parse(want).ok())
-                    .is_some_and(|(have, want)| {
-                        rpm_ranges_overlap(&have, *have_op, &want, *want_op)
-                    }),
-            },
-        }
+        offer_satisfies(self.ecosystem, offer.constraint.as_ref(), atom)
+    }
+}
+
+/// Whether an offer of `atom.name` with the constraint `offer` (a package's
+/// own version is `Some((Equal, version))`, an unversioned `Provides` is
+/// `None`) satisfies `atom`, with the native rules of `ecosystem`. The
+/// family model and the system compatibility check (`crate::compat`) share
+/// this one rule.
+pub fn offer_satisfies(ecosystem: Ecosystem, offer: Option<&(Op, String)>, atom: &Atom) -> bool {
+    let Some((want_op, want)) = &atom.constraint else {
+        return true;
+    };
+    match ecosystem {
+        // dpkg: an unversioned Provides never satisfies a versioned
+        // dependency; a versioned one is always `=`.
+        Ecosystem::Deb => match offer {
+            Some((Op::Equal, have)) => DebVersion::parse(have)
+                .ok()
+                .zip(DebVersion::parse(want).ok())
+                .is_some_and(|(have, want)| want_op.accepts(have.cmp(&want))),
+            _ => false,
+        },
+        // RPM: an unversioned Provides matches every version; otherwise
+        // the two ranges must overlap.
+        Ecosystem::Rpm => match offer {
+            None => true,
+            Some((have_op, have)) => RpmEvr::parse(have)
+                .ok()
+                .zip(RpmEvr::parse(want).ok())
+                .is_some_and(|(have, want)| rpm_ranges_overlap(&have, *have_op, &want, *want_op)),
+        },
     }
 }
 

@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# P3-005b research tool: fetches one pinned GitHub release asset into a
+# CAS through the production lazy fetcher (real TLS and DNS). Research
+# tooling only. Built by research/p3-005b/run.sh.
+
+[package]
+name = "pakomichi-p3005b-fetch"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.94.1"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "p3005b-fetch"
+path = "src/main.rs"
+
+[workspace]
+resolver = "3"
+
+[dependencies]
+pakomichi = { path = "../../.." }
+tokio = { version = "=1.53.3", default-features = false, features = ["rt", "time"] }
+
+[profile.release]
+debug = false
+strip = true
+
+[lints.rust]
+unsafe_code = "deny"

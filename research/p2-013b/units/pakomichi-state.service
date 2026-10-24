@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# P2-013b test unit (ADR-035): the state owner, serving the lazy-fetch
+# channel. Extra arguments (an operator address range) come from
+# /etc/pakomichi/state.env.
+
+[Unit]
+Description=Pakomichi state owner (P2-013b test)
+Requires=pakomichi-fetch.socket
+After=pakomichi-fetch.socket network-online.target
+
+[Service]
+Type=exec
+User=pakomichi
+Group=pakomichi
+EnvironmentFile=-/etc/pakomichi/state.env
+ExecStart=/usr/local/bin/pakomichi-state --state-db /var/lib/pakomichi/state/state.db --cas-root /var/lib/pakomichi/cas --fetch-socket /run/pakomichi/fetch.sock $STATE_ARGS
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/pakomichi
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+UMask=0027

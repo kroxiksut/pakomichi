@@ -17,13 +17,22 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use super::parse::{
-    Family, Profile, SignedBy, core_group, deb_installed, deb_provides, deb_role, deb822,
-    dpkg_owners, field, gpgkey_path, index_targets, is_soname, marked_packages, profile_for,
-    protected_names, release_version, repo_sections, signed_by, split_sources_entry,
-    uri_to_filename,
+    Family, Profile, SignedBy, VersionedPackage, core_group, deb_installed, deb_provides, deb_role,
+    deb_versioned, deb822, dpkg_owners, field, gpgkey_path, index_targets, is_soname,
+    marked_packages, profile_for, protected_names, release_version, repo_sections, signed_by,
+    split_sources_entry, uri_to_filename, versioned_packages,
 };
 use super::{CollectError, Collected};
+use crate::compat::{Origin, SystemPackages};
+use crate::inventory::Ecosystem;
 use crate::namespace::{PackageRole, SystemNamespace};
+
+fn add_versioned(packages: &mut SystemPackages, origin: Origin, package: VersionedPackage) {
+    packages.add_package(origin, &package.name, &package.version);
+    for (name, constraint) in package.provides {
+        packages.add_provide(origin, &name, constraint);
+    }
+}
 
 const TOOL_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
 const TOOL_TIMEOUT: Duration = Duration::from_secs(300);
@@ -40,6 +49,10 @@ pub struct CollectorConfig {
     /// Installed package names that came from Pakomichi's repositories;
     /// they are not members (the state owner knows them).
     pub installed_from_pakomichi: BTreeSet<String>,
+    /// Pakomichi's own sources (APT base URIs, DNF repository IDs); they
+    /// are neither distribution nor other sources for the compatibility
+    /// check.
+    pub pakomichi_sources: BTreeSet<String>,
 }
 
 /// Reads the namespace of the running system.
@@ -78,9 +91,29 @@ fn collect_apt(profile: &Profile, config: &CollectorConfig) -> Result<Collected,
     }
     let targets = index_targets(&run("apt-get", &["indextargets"], None)?);
     let mut namespace = SystemNamespace::new();
+    let mut packages = SystemPackages::new(Ecosystem::Deb);
     let mut sources = Vec::new();
+    let mut other_sources = Vec::new();
+    let mut other_unknown = Vec::new();
     for target in targets {
-        if !target.trusted || !is_distribution_apt_source(&target, profile, &keyrings)? {
+        if !target.trusted || is_own_source(config, &target.base_uri) {
+            continue;
+        }
+        if !is_distribution_apt_source(&target, profile, &keyrings)? {
+            // Another trusted source (a vendor repository, a PPA): it may
+            // satisfy an ordinary dependency, never a system name.
+            match read_apt_index(&target.filename) {
+                Some(index) => {
+                    for package in deb822(&index)
+                        .iter()
+                        .filter_map(|paragraph| deb_versioned(paragraph))
+                    {
+                        add_versioned(&mut packages, Origin::OtherSource, package);
+                    }
+                    other_sources.push(target.base_uri);
+                }
+                None => other_unknown.push(target.base_uri),
+            }
             continue;
         }
         if !Path::new(&target.filename).is_file() {
@@ -88,12 +121,7 @@ fn collect_apt(profile: &Profile, config: &CollectorConfig) -> Result<Collected,
                 source: target.base_uri.clone(),
             });
         }
-        let index = run(
-            "/usr/lib/apt/apt-helper",
-            &["cat-file", &target.filename],
-            None,
-        )
-        .map_err(|_| CollectError::Unknown {
+        let index = read_apt_index(&target.filename).ok_or_else(|| CollectError::Unknown {
             source: target.base_uri.clone(),
         })?;
         for paragraph in deb822(&index) {
@@ -106,6 +134,9 @@ fn collect_apt(profile: &Profile, config: &CollectorConfig) -> Result<Collected,
             );
             for capability in deb_provides(&paragraph) {
                 namespace.insert_capability(&capability);
+            }
+            if let Some(package) = deb_versioned(&paragraph) {
+                add_versioned(&mut packages, Origin::Distribution, package);
             }
         }
         sources.push(target.base_uri);
@@ -132,10 +163,35 @@ fn collect_apt(profile: &Profile, config: &CollectorConfig) -> Result<Collected,
         for capability in deb_provides(&paragraph) {
             namespace.insert_capability(&capability);
         }
+        if let Some(package) = deb_versioned(&paragraph) {
+            add_versioned(&mut packages, Origin::Installed, package);
+        }
     }
-    sources.sort();
-    sources.dedup();
-    Ok(Collected { namespace, sources })
+    for list in [&mut sources, &mut other_sources, &mut other_unknown] {
+        list.sort();
+        list.dedup();
+    }
+    Ok(Collected {
+        namespace,
+        sources,
+        packages,
+        other_sources,
+        other_unknown,
+    })
+}
+
+/// A decompressed APT index, or `None` when it is missing or unreadable.
+fn read_apt_index(filename: &str) -> Option<String> {
+    if !Path::new(filename).is_file() {
+        return None;
+    }
+    run("/usr/lib/apt/apt-helper", &["cat-file", filename], None).ok()
+}
+
+/// One of Pakomichi's own sources, named by APT base URI or DNF repository
+/// ID in the configuration.
+fn is_own_source(config: &CollectorConfig, source: &str) -> bool {
+    config.pakomichi_sources.contains(source)
 }
 
 /// Keyring files owned by the distribution's keyring package.
@@ -209,6 +265,7 @@ fn collect_dnf(
     let repos_package = profile.repos_package.ok_or(CollectError::Unsupported)?;
     let basearch = std::env::consts::ARCH;
     let mut repos = Vec::new();
+    let mut other_repos = Vec::new();
     let mut files: Vec<PathBuf> = fs::read_dir("/etc/yum.repos.d")
         .map_err(CollectError::Io)?
         .filter_map(Result::ok)
@@ -221,12 +278,20 @@ fn collect_dnf(
     files.sort();
     for file in files {
         let path = file.to_string_lossy().into_owned();
-        if rpm_owner(&path).as_deref() != Some(repos_package) {
-            continue;
-        }
         let Ok(text) = fs::read_to_string(&file) else {
             continue;
         };
+        if rpm_owner(&path).as_deref() != Some(repos_package) {
+            // Another repository file: its enabled repositories may satisfy
+            // an ordinary dependency, never a system name.
+            other_repos.extend(
+                repo_sections(&text)
+                    .into_iter()
+                    .filter(|section| section.enabled && !is_own_source(config, &section.id))
+                    .map(|section| section.id),
+            );
+            continue;
+        }
         for section in repo_sections(&text) {
             let keys_owned = !section.gpgkeys.is_empty()
                 && section.gpgkeys.iter().all(|url| {
@@ -249,13 +314,18 @@ fn collect_dnf(
         source: repos.join(","),
     };
 
-    let mut query = base.clone();
-    query.extend([
-        "repoquery".to_owned(),
-        "--qf".to_owned(),
-        "@@PKG %{name}\n%{provides}\n".to_owned(),
-    ]);
-    let available = run_owned("dnf", &query, Some(&home)).map_err(|_| unknown())?;
+    let repoquery = |repo_args: Vec<String>| {
+        let mut query = vec!["-q".to_owned(), "-C".to_owned()];
+        query.extend(repo_args);
+        query.extend([
+            "repoquery".to_owned(),
+            "--qf".to_owned(),
+            "@@PKG %{name} %{evr}\n%{provides}\n".to_owned(),
+        ]);
+        run_owned("dnf", &query, Some(&home))
+    };
+    let available = repoquery(repos.iter().map(|repo| format!("--repo={repo}")).collect())
+        .map_err(|_| unknown())?;
     let mut group = base.clone();
     group.extend(["group".to_owned(), "info".to_owned(), "core".to_owned()]);
     let core: BTreeSet<String> =
@@ -268,6 +338,27 @@ fn collect_dnf(
     let protected = protected_packages();
 
     let mut namespace = SystemNamespace::new();
+    let mut packages = SystemPackages::new(Ecosystem::Rpm);
+    for package in versioned_packages(&available) {
+        add_versioned(&mut packages, Origin::Distribution, package);
+    }
+    // Each other repository on its own, so one without metadata does not
+    // hide the others.
+    let mut other_sources = Vec::new();
+    let mut other_unknown = Vec::new();
+    other_repos.sort();
+    other_repos.dedup();
+    for repo in other_repos {
+        match repoquery(vec![format!("--repo={repo}")]) {
+            Ok(output) => {
+                for package in versioned_packages(&output) {
+                    add_versioned(&mut packages, Origin::OtherSource, package);
+                }
+                other_sources.push(repo);
+            }
+            Err(_) => other_unknown.push(repo),
+        }
+    }
     let role_of = |name: &str, provides: &[String], fallback: PackageRole| {
         if core.contains(name)
             || protected.contains(name)
@@ -289,7 +380,7 @@ fn collect_dnf(
     }
     let installed = run(
         "rpm",
-        &["-qa", "--qf", "@@PKG %{NAME}\n[%{PROVIDES}\n]"],
+        &["-qa", "--qf", "@@PKG %{NAME} %{EVR}\n[%{PROVIDENEVRS}\n]"],
         None,
     )?;
     for (name, provides) in marked_packages(&installed) {
@@ -304,9 +395,18 @@ fn collect_dnf(
             namespace.insert_capability(capability);
         }
     }
+    for package in versioned_packages(&installed)
+        .into_iter()
+        .filter(|package| !config.installed_from_pakomichi.contains(&package.name))
+    {
+        add_versioned(&mut packages, Origin::Installed, package);
+    }
     Ok(Collected {
         namespace,
         sources: repos,
+        packages,
+        other_sources,
+        other_unknown,
     })
 }
 

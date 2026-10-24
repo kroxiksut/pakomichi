@@ -6,12 +6,16 @@
 //! ```text
 //! pakomichi-reader --publish-root DIR --cas-root DIR
 //!                  [--retention-seconds N] [--listen 127.0.0.1:PORT]
+//!                  [--fetch-socket /run/pakomichi/fetch.sock]
 //! ```
 //!
 //! The socket comes from systemd socket activation (`LISTEN_FDS`). Without
 //! an inherited socket the reader binds only an explicit loopback address
 //! given with `--listen` (the ordinary-service fallback of ADR-007); it never
-//! picks an address itself and never binds a non-loopback one.
+//! picks an address itself and never binds a non-loopback one. With
+//! `--fetch-socket`, a package missing from the CAS is asked of the state
+//! owner (ADR-035) and served only after the reader hashed it itself. The
+//! reader refuses to run as root.
 
 #[cfg(unix)]
 fn main() -> std::process::ExitCode {
@@ -44,6 +48,7 @@ mod unix {
         cas_root: PathBuf,
         retention: Duration,
         listen: Option<SocketAddr>,
+        fetch_socket: Option<PathBuf>,
     }
 
     fn options() -> Result<Options, String> {
@@ -51,6 +56,7 @@ mod unix {
         let mut cas_root = None;
         let mut retention = DEFAULT_RETENTION;
         let mut listen = None;
+        let mut fetch_socket = None;
         let mut arguments = std::env::args_os().skip(1);
         while let Some(argument) = arguments.next() {
             let name = argument.to_string_lossy().into_owned();
@@ -60,6 +66,7 @@ mod unix {
             match name.as_str() {
                 "--publish-root" => publish_root = Some(PathBuf::from(value)),
                 "--cas-root" => cas_root = Some(PathBuf::from(value)),
+                "--fetch-socket" => fetch_socket = Some(PathBuf::from(value)),
                 "--retention-seconds" => {
                     let seconds = value
                         .to_str()
@@ -85,6 +92,7 @@ mod unix {
             cas_root: cas_root.ok_or("--cas-root is required")?,
             retention,
             listen,
+            fetch_socket,
         })
     }
 
@@ -101,10 +109,19 @@ mod unix {
     }
 
     pub fn run() -> Result<(), String> {
+        // The role is checked before anything else is read.
+        #[cfg(target_os = "linux")]
+        pakomichi::process::require_unprivileged().map_err(|error| error.to_string())?;
         let options = options()?;
-        let repositories =
+        let mut repositories =
             Repositories::open(&options.publish_root, &options.cas_root, options.retention)
                 .map_err(|error| error.to_string())?;
+        if let Some(socket) = &options.fetch_socket {
+            // The answer covers a whole download (the state owner's total
+            // deadline plus a margin).
+            let client = pakomichi::lazy::FetchClient::new(socket, Duration::from_secs(31 * 60));
+            repositories = repositories.with_fetcher(Arc::new(client));
+        }
         let listener = listener(options.listen)?;
         listener
             .set_nonblocking(true)

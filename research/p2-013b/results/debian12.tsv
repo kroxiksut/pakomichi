@@ -1,0 +1,9 @@
+E1	PASS	/run/pakomichi/sign.sock 600 pakomichi;/run/pakomichi/inspect.sock 600 pakomichi;/run/pakomichi/fetch.sock 600 pakomichi-reader;
+E2	PASS	pakomichi: signed 309 bytes, gpgv rc=0; root: rc=3 (failed signing failed: signer unavailable: I/O error: Connection reset by peer (os error 104)), refusal logged rc=0; pakomichi-reader: rc=3 (failed signing failed: signer unavailable: connect: Permission denied (os error 13))
+E3	PASS	state owner lists the key dir rc=2, reads the keyring rc=1; 700 pakomichi-signer;700 pakomichi-signer;
+E4	PASS	key dir 0750: sign rc=3 (failed signing failed: signer unavailable: I/O error: Connection reset by peer (os error 104)), refusal logged rc=0
+E5	PASS	pakomichi: deb pakomichi-r003-fixture 0.2.0 all scripts=0; root: rc=3 (failed inspector unavailable: I/O error: Connection reset by peer (os error 104))
+E6	PASS	DynamicUser=yes;PrivateNetwork=yes;ProtectSystem=strict;ReadOnlyPaths=/var/lib/pakomichi/cas;RestrictAddressFamilies=AF_UNIX;
+E7	PASS	object removed; apt-get install rc=0 version=0.2.0; refetched object a59a5cfd27b6
+E8	PASS	unpinned: failed 500 no pinned asset for this object (status 500); root: failed 503 fetch service unavailable: I/O error: Connection reset by peer (os error 104) (status 503)
+E9	PASS	refused as root: pakomichi-reader pakomichi-state pakomichi-signer pakomichi-inspector 

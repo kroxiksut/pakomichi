@@ -15,7 +15,7 @@
 ## Base source modes
 
 - `observing`: information only; we publish nothing.
-- `supplemental`: system sources are preferred; the Git package is used when the policy and native resolution allow it. A name installed from, or available in, another enabled source is not activated in this mode.
+- `supplemental`: system sources are preferred; the Git package is used when the policy and native resolution allow it. A name installed from, or available in, another enabled source, or shipped by the distribution as an application, is not activated in this mode (`E_NAME_PROVIDED_ELSEWHERE`).
 - `preferred`: explicit user consent and a confirmed native policy, only for allowed names; no change of any other vendor by default. Taking over a name from another source is an explicit migration (ADR-012, E2E-04). A Pinned source never uses this mode (ADR-027).
 - `suspended`: conflict/error; do not publish new untrusted material.
 
@@ -45,6 +45,16 @@ While the closed software environment is on (or cannot be ruled out), Pakomichi 
 - Automatically roll back to a lower version or switch stable → prerelease.
 - Require `APT::Get::EnableUpgrade` or any other change of the distribution's APT or DNF policy.
 - Judge source health by the exit status of `apt-get update` (it exits 0 when a source is offline); use Pakomichi's own state instead (ADR-022 point 6).
+
+## Decision core (P2-009a)
+
+`src/policy` decides one artifact from versioned facts: the source (requested mode, identity, Pinned consent, whether the native manager was shown to select the source, whether the execution policy is off) and the artifact (evidence, a changed pinned asset, the inspection, the channel, the system namespace, the family admission, the compatibility check, another source with the same version, the name provided elsewhere, an earlier activation, a confirmed migration). The rules run in the order of the decision priority above, and the first that objects decides; each decision names its rule and rule version.
+
+- What a code does is the behaviour column of `specifications/errors.md`, checked by a test: "Reject" codes (`E_ASSET_MUTATED`, `E_ATTESTATION_INVALID`, `E_ARTIFACT_MALFORMED`) deny the bytes, "Suspend" codes (`E_REPO_ID_CHANGED`, `E_OWNER_TRANSFER`) suspend the source and hold its artifacts, every other code holds.
+- Effective mode: a changed identity suspends the source; an execution policy that is on or unknown makes it observed and holds every artifact (ADR-025); `preferred` without proof of native selection, or for a Pinned source, becomes `observing`, never a false `preferred`. An observed source's admissible artifacts are allowed but not published.
+- A Pinned release needs both the source's Pinned consent and the release approval; an approval without consent is a downgrade.
+- The own name: a part of the operating system is a system package conflict, a name the distribution ships as an application or another source provides is `E_NAME_PROVIDED_ELSEWHERE`; both are excused when this source activated the name first (ADR-022 point 3), a `Provides` of a system package never is. Only an explicit migration of a non-Pinned source in `preferred` mode takes a name over (ADR-012, ADR-027 point 5).
+- The facts serialize to canonical JSON with `schema_version` 1, unknown and missing fields refused; the same facts give the same decision and the same digest, so a decision written to the append-only `decision_log` can be replayed (P2-009b).
 
 ## Decision vs transaction
 

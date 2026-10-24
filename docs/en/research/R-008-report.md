@@ -156,12 +156,38 @@ For Pakomichi, the consequences are:
 
 So neither the leaf thumbprint nor one intermediate can be pinned. The candidate pin is the subject plus a known root, on a valid chain with a timestamp. Older releases (9.8, 9.5, 8.9) are still needed before this becomes a finding. The WinGet `InstallerSha256` for 10.0.0.0 equals the GitHub digest; the script's automatic WinGet comparison still has a bug.
 
+## Phase B: Gitea on gitea.com (2026-10-23)
+
+Disposable fixtures created by an agent on the owner's instructions and labelled as such: organizations `pchi-test-gitea-a` (ID 259409) and `pchi-test-gitea-b` (ID 259410), repositories 148572 and 148573. Server version `29.0.0+dev-160-g55186ca39b`. Harness `research/r-008/gitea.py`, results `research/r-008/gitea-results.tsv`, raw responses in `.research-local/r-008/gitea-20261023T000000Z/`; the token was read only inside the harness and found in no file. The facts below were checked again with anonymous reads.
+
+1. **Reading a repository by ID needs a token.** `GET /api/v1/repositories/{id}` answers HTTP 401 `token is required` anonymously and 200 with a token; reading by name works anonymously. Reconciling by ID, never by name, therefore needs credentials on Gitea (confirms phase A).
+2. **Rename keeps the ID and redirects.** After `pchi-test` → `pchi-test-renamed` the ID stayed 148572; the old name answers 301 on the API, the web URL, and the Git URL.
+3. **Reuse of the old name removes the redirect.** A new repository under the old name (ID 148573) answers 200 there with no redirect; a lookup by name now silently reaches another repository, as on GitHub (R-003). Only the ID tells them apart.
+4. **Transfer** to another organization answered 202 and completed at once (both organizations had the same owner, so an acceptance step for a foreign owner was not tested). The ID stayed, the owner ID changed from 259409 to 259410, and the old path answers 301.
+5. **Release attachments carry no digest.** The attachment JSON has only `id`, `uuid`, `name`, `size`, `download_count`, `created_at`, `browser_download_url`; the download (`/attachments/{uuid}`) is a 303 to a presigned object-storage URL valid for 300 s, and neither response carries a digest header. The SHA-256 is known only after downloading.
+6. **Two attachments with the same name are accepted in one release** (201 for the second upload). An asset name does not identify a file on Gitea; two files of one name are `E_SOURCE_AMBIGUOUS`, as in `specifications/github.md` point 4.
+7. **A replaced attachment leaves no trace on the release.** Delete and upload under the same name gives a new `id` and `uuid`, so the URL changes and the old one answers 404; `published_at` and `created_at` stay, there is no `updated_at`, and neither the activity feed nor `releases.atom` records the change. There is no immutable-release setting. A pin of `(release ID, attachment ID, SHA-256 of the downloaded bytes)` detects the replacement; nothing on the server does.
+8. **No HTTP validators.** No `ETag` or `Last-Modified` on the API responses tested (`Cache-Control: max-age=0, private, must-revalidate`), so conditional requests are not available; no rate-limit headers were seen.
+9. **No package registry on gitea.com.** Every `/api/packages/…` path answers 404 from the front proxy, and the repositories report `has_packages=false`. The Debian/RPM registry questions (service-held key, `Valid-Until`, the same version with new bytes) need a self-hosted Gitea or Forgejo instance and stay open.
+10. **Actions are enabled** (`has_actions=true`, an empty run list); Gitea has no artifact attestations, so a Gitea source can reach Native or Pinned at most (phase A, finding 1).
+
+## Phase B: package registry on a self-hosted Forgejo (2026-10-23)
+
+gitea.com serves no package registry, so the registry questions ran on Forgejo 17.0.0 (`17.0.0+gitea-1.22.0`) in a disposable WSL distribution `pakomichi-r008-forgejo` from the pinned Debian 12 image, removed afterwards. The binary was verified by SHA-256 (`5a3b07e1…`) and by its OpenPGP signature against the release key `EB114F5E…C5923710` published on forgejo.org (`research/r-008/forgejo.lock.json`). Harness `research/r-008/forgejo-*.sh`, `forgejo-registry.py`; results `research/r-008/forgejo-registry.tsv`; raw files (Release, InRelease, Packages at every step, keys, repomd, apt logs) in `.research-local/r-008/forgejo-20261023T044146Z/`. Fixtures: the inert R-003 test `.deb` files and two R-001 builds of `sampleapp-1.0-1.noarch` with different bytes. Lab secrets were deleted after the run and found in no file.
+
+1. **The service holds the key, one per owner and format.** It is generated on the first publication of an owner: RSA-2048, no expiry. Owners `lab` and `other` got different keys, and the RPM key of `lab` differs from its Debian key. The key stayed the same through every later step.
+2. **No freshness bound.** The Debian `Release` has `Acquire-By-Hash: yes`, MD5/SHA1/SHA256/SHA512 sections and a `Date` equal to the time of the last package change, but no `Valid-Until`; the RPM `repomd.xml` has no revision and no expiry. A frozen copy of such a repository stays valid indefinitely (as in the APT freshness result above).
+3. **The same version can silently get new bytes.** Uploading another `0.2.0` with the same name and architecture is refused (HTTP 409 `package file already exists`), but `DELETE` of the version (204) followed by the upload (201) publishes the new bytes under the same version: `Packages` changes from `93b4dc42…` to `a59a5cfd…`, `Date` moves on, and `InRelease` and `Release.gpg` verify with the same key. The only trace is a new internal version ID (5 → 6); no history or audit entry remains. RPM behaves the same (`8b594f76…` → `470e92cb…`, `repomd.xml.asc` valid).
+4. **APT notices only a stale index, never the change.** With the cached index, `apt-get download` of 0.2.0 failed with `File has unexpected size (800 != 772). Mirror sync in progress?`; after `apt-get update` it fetched the new bytes without any warning.
+
+So a valid signature of a hosted registry proves that the service published the index, not that a version kept its bytes. A source of this kind reaches Native at most (ADR-032), and Pakomichi must pin what it admitted by name, version and SHA-256 and treat new bytes under an admitted version as a replacement (`E_ASSET_MUTATED`), exactly as for release assets.
+
 ## Phase B (each item needs the owner's approval)
 
 - **Forges** (test projects created by the owner):
   - GitLab: rename, transfer, reuse of the old path, link swap, duplicate upload, CI attestation and its certificate claims;
-  - Codeberg: rename and reuse, re-upload of an attachment;
-  - Bitbucket, only with a paid workspace;
+  - Gitea on gitea.com: done on 2026-10-23 (section above); the package registry on a self-hosted Forgejo: done on 2026-10-23 (section above); still open: Codeberg;
+  - Bitbucket, only with a paid workspace: since 2025-05-29 free workspaces cannot upload or download files (Downloads) and have 1 GB of storage in total ([Atlassian, "Important changes coming to Bitbucket Cloud's Free plan"](https://www.atlassian.com/blog/bitbucket/important-changes-coming-to-bitbucket-clouds-free-plan), read 2026-10-23). Not tested: the project does not take a paid plan for this; a contribution with a reproducible test on a paid workspace is welcome;
   - GitFlic and GitVerse: read-only with the owner's token.
 - **Hosted repositories** (R-001 and R-004 labs):
   - APT freeze without `Valid-Until`, with and without `Valid-Until-Max`;

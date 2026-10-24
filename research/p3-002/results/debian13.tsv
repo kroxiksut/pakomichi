@@ -1,0 +1,11 @@
+C1	PASS	apply rc=0/0 check rc=0; eqapp held rc=0; pins rc=0 o=,l= rc=0; other /etc/apt files unchanged rc=0
+C2	PASS	install rc=0: sampleapp=1.0-1/strict sampleapp-helper=1.0-1/strict
+C3 apt-upgrade	PASS	rc=0 simulation clean rc=0; sampleapp=1.0-1/strict sampleapp-helper=1.0-1/strict distapp=1.0-1/distro; check rc=0, 3 notices, distro and other named rc=0
+C3 apt-full-upgrade	PASS	rc=0 simulation clean rc=0; sampleapp=1.0-1/strict sampleapp-helper=1.0-1/strict distapp=1.0-1/distro; check rc=0, 3 notices, distro and other named rc=0
+C3 apt-get-dist-upgrade	PASS	rc=0 simulation clean rc=0; sampleapp=1.0-1/strict sampleapp-helper=1.0-1/strict distapp=1.0-1/distro; check rc=0, 3 notices, distro and other named rc=0
+C4	PASS	our distapp 2.0-1 at priority 100 rc=0, distapp stays distapp=1.0-1/distro; control at 500 would upgrade rc=0
+C5	PASS	install rc=0: freeapp=1.0-1/strict
+C6	PASS	checking eqapp as activated: rc=3, E_SOURCE_AMBIGUOUS rc=0; no 990 for eqapp rc=0
+C7	PASS	foreign 1001 pin: check rc=3 NotProtected rc=0; removed: rc=0
+C8	PASS	edited pin: apply rc=3 drift rc=0, edit kept rc=0; restored: apply rc=0
+C9	PASS	remove rc=0, Pakomichi files left=0, others unchanged rc=0; update rc=0 warnings=0; sampleapp=1.0-1/strict still installed

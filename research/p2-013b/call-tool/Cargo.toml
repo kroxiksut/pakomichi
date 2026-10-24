@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# P2-013b research tool: calls the sign, inspect and fetch channels of
+# ADR-035 through the production clients. Research tooling only. Built by
+# research/p2-013b/build.sh.
+
+[package]
+name = "pakomichi-p2013b-call"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.94.1"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "p2013b-call"
+path = "src/main.rs"
+
+[workspace]
+resolver = "3"
+
+[dependencies]
+pakomichi = { path = "../../.." }
+
+[profile.release]
+debug = false
+strip = true
+
+[lints.rust]
+unsafe_code = "deny"

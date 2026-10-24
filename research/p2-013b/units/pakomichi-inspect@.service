@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# P2-013b test unit (ADR-035): inspects one package from the CAS, as a
+# throwaway user, without network, on a read-only file system.
+
+[Unit]
+Description=Pakomichi package inspector instance (P2-013b test)
+
+[Service]
+Type=exec
+DynamicUser=yes
+SupplementaryGroups=pakomichi
+ExecStart=/usr/local/bin/pakomichi-inspector --cas-root /var/lib/pakomichi/cas --socket /run/pakomichi/inspect.sock
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+RuntimeMaxSec=120
+NoNewPrivileges=yes
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadOnlyPaths=/var/lib/pakomichi/cas
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+UMask=0077

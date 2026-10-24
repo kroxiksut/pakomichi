@@ -17,19 +17,31 @@
 //! - files are the source of truth, and `reconcile` rebuilds the
 //!   `snapshot` rows from them.
 //!
-//! Building the APT and RPM indexes and signing them belong to the index
-//! publishers (P3-001, P3-003). Serving belongs to the repository reader
+//! The APT index publisher (P3-001) builds `Packages` and `Release` from
+//! the exact bytes of admitted packages (`apt`), has `Release` clear-signed
+//! by the metadata signer and checked with `gpgv` (`sign`), re-reads the
+//! generation independently, and only then publishes it (`apt_store`).
+//! The RPM index publisher is P3-003. Serving belongs to the repository reader
 //! (P3-005a), which looks generations up through `PublishReader` without
 //! taking the publisher lock. An empty DNF generation after the maximum
 //! freshness (ADR-024 point 3) is an ordinary generation whose indexes list
 //! no packages.
 
+pub mod apt;
+#[cfg(unix)]
+mod apt_store;
 mod manifest;
 #[cfg(unix)]
 mod reader;
 #[cfg(unix)]
+pub mod sign;
+#[cfg(unix)]
 mod store;
+#[cfg(all(test, unix))]
+mod test_keys;
 
+#[cfg(unix)]
+pub use apt_store::{AptGeneration, AptPublishError, publish_apt};
 pub use manifest::{
     Backend, Entry, GenerationId, GenerationMeta, MAX_ENTRIES, Manifest, ManifestError, PathClass,
     RepoName, RepoPath, SourceId, Timestamp, check_immutable_paths, classify,

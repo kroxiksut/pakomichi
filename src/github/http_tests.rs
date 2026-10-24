@@ -18,11 +18,7 @@ type TestResult = Result<(), Box<dyn Error>>;
 struct FixedResolver(Vec<SocketAddr>);
 
 impl Resolve for FixedResolver {
-    async fn resolve(
-        &self,
-        _host: &'static str,
-        _port: u16,
-    ) -> Result<Vec<SocketAddr>, TransportError> {
+    async fn resolve(&self, _host: &str, _port: u16) -> Result<Vec<SocketAddr>, TransportError> {
         Ok(self.0.clone())
     }
 }
@@ -36,11 +32,7 @@ struct PlainConnector {
 impl SecureConnector for PlainConnector {
     type Stream = TcpStream;
 
-    async fn connect(
-        &self,
-        _host: &'static str,
-        address: SocketAddr,
-    ) -> Result<TcpStream, TransportError> {
+    async fn connect(&self, _host: &str, address: SocketAddr) -> Result<TcpStream, TransportError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         TcpStream::connect(address)
             .await

@@ -1,0 +1,12 @@
+A1	PASS	generation 1; update rc=0 install rc=0 warnings=0 version=1.0; policy o=/l= rc=0; Signed-By only
+A2	PASS	update rc=0; by-hash requests=1; plain index requests=0
+A3	PASS	tampered InRelease: update rc=0, signature errors=3, client keeps the previous InRelease
+A4	PASS	tampered Packages: update rc=100, mismatch errors=4, no index stored
+A5	PASS	tampered .deb: install rc=100, mismatch errors=4, installed 1.0
+A6	PASS	Signed-By another key: update rc=100, key errors=3, no InRelease stored
+A7	PASS	signer with another key: publish rc=2, current 1 -> 1
+A8	PASS	confirmation 8 days old: publish rc=2, current 1 -> 1
+A9	PASS	g1 package after the switch to 2: rc=0; apt upgrade rc=0 -> 2.0
+A10	PASS	switch to 3 while the index was held (1): update rc=0, lists consistent rc=0
+A11	PASS	valid 40 s: update rc=0, after expiry errors=1; re-sign stale rc=2; fresh 5 rc=0
+A12	PASS	older InRelease replayed after 6: update rc=0, client keeps the newer one

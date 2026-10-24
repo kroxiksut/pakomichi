@@ -15,7 +15,10 @@
 //!   to the digest of the plan that was shown, and responses flushed and
 //!   half-closed before the socket is closed.
 
+pub mod channels;
 pub mod frame;
+#[cfg(unix)]
+pub mod oneshot;
 pub mod protocol;
 #[cfg(unix)]
 pub mod server;

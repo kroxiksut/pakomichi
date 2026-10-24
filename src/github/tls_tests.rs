@@ -86,11 +86,7 @@ struct Seen {
 struct FixedResolver(SocketAddr);
 
 impl Resolve for FixedResolver {
-    async fn resolve(
-        &self,
-        _host: &'static str,
-        _port: u16,
-    ) -> Result<Vec<SocketAddr>, TransportError> {
+    async fn resolve(&self, _host: &str, _port: u16) -> Result<Vec<SocketAddr>, TransportError> {
         Ok(vec![self.0])
     }
 }

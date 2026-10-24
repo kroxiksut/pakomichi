@@ -66,6 +66,7 @@ Use `docs/en/process/rust-engineering.md` as the accepted Rust engineering basel
 
 - Before starting a task, check its `Зависит от` field in `TASKS_RU.md` and the required research protocols.
 - Mark a task complete only when its acceptance criteria, negative tests, documentation, and saved verification artifacts are complete.
+- **Tests are written from a failure. A test names what can break and how — forged or truncated repository metadata, a bad signature, an interrupted download, a full disk, a clock jump, a race between two runs, a mirror that answers differently — and asserts the promise to the user, not what the code does today. A test that breaks the code is fixed in the code; an expectation changes only when the owner changes the expectation, never to turn the suite green. A test that catches no breakage is deleted, not kept as coverage. A fix comes with its test written first, and that test is seen failing on the old code: a test that never failed proves nothing.**
 - When blocked, record the observation, reproduction, suspected cause, available options, and exact dependency; continue independent tasks.
 - When a decision changes, create a superseding ADR. Never rewrite the old ADR retroactively.
 - Test every network or package-manager integration in a container or VM; do not experiment with the host's system repositories.

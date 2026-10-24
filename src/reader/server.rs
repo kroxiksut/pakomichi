@@ -220,6 +220,12 @@ fn respond(lookup: Lookup, head: bool, shown: &str) -> Response<ReplyBody> {
                 false,
             )
         }
+        Lookup::FetchFailed(error) => {
+            eprintln!("event=fetch-failed target={shown} error={error}");
+            let code = StatusCode::from_u16(error.http_status())
+                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            status(code, "package unavailable\n", false)
+        }
         Lookup::Unavailable(error) => {
             eprintln!("event=store-unavailable target={shown} error={error}");
             status(

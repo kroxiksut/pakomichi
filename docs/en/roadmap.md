@@ -20,7 +20,7 @@
 
 ## Do not expand 0.1
 
-A GUI, WinGet, GitLab/Forgejo/Gitea, public package catalogs, automatically discovered forks, and a standalone dependency solver are separate future epics. WinGet starts from [R-007](research/R-007-windows-msi-winget.md), which works through a concrete MSI example.
+A GUI, WinGet, GitLab/Forgejo/Gitea, public package catalogs, automatically discovered forks, and a standalone dependency solver are separate future epics. WinGet starts from [R-007](research/R-007-windows-msi-winget.md), which works through a concrete MSI example. Bitbucket Cloud is not planned by the project itself: since 2025 its free workspaces cannot host release files (Downloads), and the project does not take a paid plan to test it ([R-008](research/R-008-report.md)). A contribution of a Bitbucket source with reproducible tests on a paid workspace is welcome.
 
 ## Milestone artifacts
 

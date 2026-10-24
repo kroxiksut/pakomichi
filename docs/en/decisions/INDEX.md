@@ -36,3 +36,6 @@ Each ADR contains its rationale, alternatives, consequences, and a reference to 
 - [ADR-030: Production attestation verifier: `sigstore-verify` behind a Pakomichi policy layer](ADR-030.md)
 - [ADR-031: Reason events v2 with an attestation sub-reason (supersedes the last sentence of ADR-029 point 5)](ADR-031.md)
 - [ADR-032: Source model: any source kind, honest evidence levels, configurable policy](ADR-032.md) (proposed, draft)
+- [ADR-033: Local API for clients other than the CLI (refines ADR-029)](ADR-033.md)
+- [ADR-034: Attestation evidence after R-003: stored bundles and lookup after a transfer (refines ADR-030)](ADR-034.md)
+- [ADR-035: Process layout: isolated signer and inspector, a lazy-fetch channel for the reader (refines ADR-017, ADR-029)](ADR-035.md)

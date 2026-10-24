@@ -10,18 +10,30 @@ use std::fmt;
 use std::io;
 
 use super::SystemNamespace;
+use crate::compat::SystemPackages;
 use crate::error::ReasonCode;
 
 pub mod parse;
 #[cfg(target_os = "linux")]
 pub mod system;
 
-/// A namespace and the distribution sources it was read from.
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// A namespace, the system's packages with their versions, and the sources
+/// they were read from.
+#[derive(Clone, Debug)]
 pub struct Collected {
     pub namespace: SystemNamespace,
     /// APT base URIs or DNF repository IDs of the distribution sources.
     pub sources: Vec<String>,
+    /// Versions and `Provides` of the distribution's, the installed, and the
+    /// other enabled sources' packages, for the compatibility check
+    /// (P2-008b, `crate::compat`).
+    pub packages: SystemPackages,
+    /// Other enabled sources read into `packages`.
+    pub other_sources: Vec<String>,
+    /// Other enabled sources whose metadata could not be read: their
+    /// packages are missing from `packages`, so a dependency only they
+    /// offer is held, never admitted.
+    pub other_unknown: Vec<String>,
 }
 
 /// Why the namespace could not be read.
