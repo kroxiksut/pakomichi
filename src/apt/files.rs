@@ -315,6 +315,18 @@ pub fn apply_change(root: &Path, change: &Change, known: &mut Known) -> Result<(
 /// Applies a plan in order. A plan with drift applies nothing. On an error
 /// `known` holds every change that was completed.
 pub fn apply(root: &Path, plan: &Plan, known: &mut Known) -> Result<(), ApplyError> {
+    apply_with(root, plan, known, &mut |_, _| Ok(()))
+}
+
+/// [`apply`] with `before` called ahead of every change: an error from it
+/// stops the plan there, as a failed write would. Tests use it to stop at
+/// each step.
+pub(crate) fn apply_with(
+    root: &Path,
+    plan: &Plan,
+    known: &mut Known,
+    before: &mut dyn FnMut(usize, &Change) -> io::Result<()>,
+) -> Result<(), ApplyError> {
     if !plan.drift.is_empty() {
         return Err(ApplyError::Drift(plan.drift.clone()));
     }
@@ -322,7 +334,8 @@ pub fn apply(root: &Path, plan: &Plan, known: &mut Known) -> Result<(), ApplyErr
     for (path, digest) in &plan.adopted {
         known.0.insert(path.clone(), *digest);
     }
-    for change in &plan.changes {
+    for (index, change) in plan.changes.iter().enumerate() {
+        before(index, change)?;
         apply_change(root, change, known)?;
     }
     Ok(())

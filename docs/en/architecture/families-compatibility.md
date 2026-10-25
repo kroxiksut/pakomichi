@@ -44,7 +44,7 @@ The snapshot provides consistent version metadata. If `app (= 0.6)` depends on `
 
 ## Family admission (P2-007)
 
-A family is in one of two states. **Proposed:** found on the first connection; nothing is admitted until the administrator confirms the set of names. **Approved:** confirmed at a revision; new versions of these names follow the policy. A confirmation names the revision it was shown, so a confirmation of an older revision is refused. Both the first confirmation and every extension come only from an interactive administrator action, never from an automatic `yes`.
+A family is in one of two states. **Proposed:** found on the first connection; nothing is admitted until the administrator confirms the set of names. **Approved:** confirmed at a revision; new versions of these names follow the policy. A confirmation names the revision it was shown, so a confirmation of an older revision is refused. Both the first confirmation and every extension come only from an interactive administrator action, never from an automatic `yes`. That action is `pchi source activate` (ADR-036 point 3): its confirmation approves the listed names into the next revision and activates them.
 
 For one target, the admission decides every known artifact of the family, the new ones and the already published ones, in this order:
 

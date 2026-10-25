@@ -14,12 +14,21 @@
 //!   activated name is protected, no equal version hides in another source,
 //!   and a newer version elsewhere is a notice.
 //!
-//! The privileged applier that runs this as root, records the operation,
-//! and rolls it back is P4-003.
+//! - `applier` (Unix): the root side of an apply (P4-003a): renders the
+//!   files from the desired configuration itself, writes, reads back, asks
+//!   APT, and restores the previous configuration on any failure.
+//! - `operation` (Unix): the state owner's side: intent in `admin_operation`,
+//!   the applier over `apply.sock`, the outcome, and recovery.
+//! - `wire`: the `apply.sock` messages to and from these types, checked.
 
+#[cfg(unix)]
+pub mod applier;
 pub mod config;
 #[cfg(unix)]
 pub mod files;
+#[cfg(unix)]
+pub mod operation;
 pub mod policy;
 #[cfg(unix)]
 pub mod system;
+pub mod wire;

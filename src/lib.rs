@@ -8,6 +8,7 @@
 pub mod apt;
 pub mod attest;
 pub mod cas;
+pub mod cli;
 pub mod compat;
 pub mod error;
 pub mod family;
@@ -23,4 +24,8 @@ pub mod policy;
 pub mod process;
 pub mod publish;
 pub mod reader;
+#[cfg(unix)]
+pub mod service;
 pub mod state;
+#[cfg(unix)]
+pub mod sync;

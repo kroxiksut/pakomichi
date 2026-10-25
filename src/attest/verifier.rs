@@ -10,6 +10,7 @@ use super::bundle::{
     self, Candidate, RELEASE_PREDICATE, SLSA_PROVENANCE_V1, STATEMENT_V1, Statement,
 };
 use super::reason::{AttestationFailure, MissingEvidence, SubReason, from_library};
+use super::signer::{AttestedSigner, InvalidWorkflow, SignerRef, check_workflow};
 use crate::cas::Sha256Digest;
 use crate::github::{
     ExpectedRelease, GitObjectId, NamedSubject, OwnerId, PinnedRepository, ReleaseClaims,
@@ -94,10 +95,6 @@ impl SourceRef {
     }
 }
 
-/// A workflow path that is not `.github/workflows/<file>.yml|yaml`.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct InvalidWorkflow;
-
 /// What an Attested provenance must state for one asset (ADR-030 point 5).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExpectedProvenance {
@@ -123,18 +120,7 @@ impl ExpectedProvenance {
         asset_sha256: Sha256Digest,
     ) -> Result<Self, InvalidWorkflow> {
         let workflow = workflow.into();
-        let file = workflow
-            .strip_prefix(".github/workflows/")
-            .ok_or(InvalidWorkflow)?;
-        let valid = !file.is_empty()
-            && (file.ends_with(".yml") || file.ends_with(".yaml"))
-            && file
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
-            && !file.starts_with('.');
-        if !valid {
-            return Err(InvalidWorkflow);
-        }
+        check_workflow(&workflow)?;
         Ok(Self {
             repository_id: repository.repository_id(),
             accepted_owner_ids: repository.accepted_owner_ids().collect(),
@@ -143,6 +129,25 @@ impl ExpectedProvenance {
             commit,
             asset_sha256,
         })
+    }
+
+    /// What a provenance of the release tagged `tag` must state for the
+    /// confirmed signer of the source.
+    pub fn for_signer(
+        repository: &PinnedRepository,
+        signer: &AttestedSigner,
+        tag: &str,
+        commit: GitObjectId,
+        asset_sha256: Sha256Digest,
+    ) -> Self {
+        Self {
+            repository_id: repository.repository_id(),
+            accepted_owner_ids: repository.accepted_owner_ids().collect(),
+            workflow: signer.workflow().to_owned(),
+            source_ref: signer.source_ref().for_release(tag),
+            commit,
+            asset_sha256,
+        }
     }
 }
 
@@ -271,6 +276,99 @@ impl AttestationVerifier {
             },
         )
     }
+}
+
+impl AttestationVerifier {
+    /// The signers of the verified provenances of one asset (ADR-036
+    /// point 1): every check of [`Self::verify_attested`] holds, except
+    /// that the workflow and the ref are read from the verified certificate
+    /// instead of being compared. The signer is still a workflow of the
+    /// pinned repository itself, from the commit `tag` points to, on a
+    /// GitHub-hosted runner. Distinct signers are all returned, so the
+    /// caller can refuse to choose between them.
+    pub fn discover_attested(
+        &self,
+        bundles: &[&[u8]],
+        repository: &PinnedRepository,
+        tag: &str,
+        commit: GitObjectId,
+        asset_sha256: Sha256Digest,
+    ) -> Result<Vec<AttestedSigner>, AttestationFailure> {
+        bundle::check_count(bundles)?;
+        let policy = VerificationPolicy::any_identity().require_issuer(GITHUB_ACTIONS_ISSUER);
+        let mut signers = Vec::new();
+        let mut first_failure = None;
+        for bytes in bundles {
+            let found = bundle::decode(bytes).and_then(|candidate| {
+                if candidate.statement.predicate_type != SLSA_PROVENANCE_V1 {
+                    return Ok(None);
+                }
+                let result = verify_crypto(&self.attested, &candidate, asset_sha256, &policy)?;
+                if !(result.sct_verified() && result.tlog_verified()) {
+                    return Err(AttestationFailure::invalid(
+                        SubReason::TlogInclusion,
+                        "SCT or transparency-log inclusion not verified",
+                    ));
+                }
+                let signer = signer_of(&result, tag)?;
+                let expected =
+                    ExpectedProvenance::for_signer(repository, &signer, tag, commit, asset_sha256);
+                check_provenance(&result, &expected)?;
+                Ok(Some(signer))
+            });
+            match found {
+                Ok(Some(signer)) if !signers.contains(&signer) => signers.push(signer),
+                Ok(_) => {}
+                Err(failure) => {
+                    first_failure.get_or_insert(failure);
+                }
+            }
+        }
+        if signers.is_empty() {
+            return Err(
+                first_failure.unwrap_or(AttestationFailure::Missing(MissingEvidence::NoProvenance))
+            );
+        }
+        signers.sort();
+        Ok(signers)
+    }
+}
+
+/// The workflow and ref rule a verified certificate names. The workflow
+/// must be one of the source repository itself; the check against the pin
+/// follows in `check_provenance`.
+fn signer_of(result: &VerificationResult, tag: &str) -> Result<AttestedSigner, AttestationFailure> {
+    let claims = &result
+        .certificate()
+        .ok_or_else(|| {
+            AttestationFailure::invalid(SubReason::CertificateUntrusted, "no certificate")
+        })?
+        .ci_claims;
+    let source = claims.source_repository_uri.as_deref().unwrap_or_default();
+    let signer = claims.build_signer_uri.as_deref().unwrap_or_default();
+    let (path, signer_ref) = signer
+        .strip_prefix(source)
+        .filter(|_| !source.is_empty())
+        .and_then(|rest| rest.strip_prefix('/'))
+        .and_then(|rest| rest.rsplit_once('@'))
+        .ok_or_else(|| {
+            AttestationFailure::invalid(
+                SubReason::WorkflowMismatch,
+                "signer is not a workflow of the source repository",
+            )
+        })?;
+    let rule = SignerRef::of_ref(signer_ref, tag).ok_or_else(|| {
+        AttestationFailure::invalid(
+            SubReason::RefMismatch,
+            "signer ran from neither the release tag nor a branch",
+        )
+    })?;
+    AttestedSigner::new(path, rule).map_err(|_| {
+        AttestationFailure::invalid(
+            SubReason::WorkflowMismatch,
+            "signer is not a workflow file of the repository",
+        )
+    })
 }
 
 /// Tries every bundle with the wanted predicate; the first that passes

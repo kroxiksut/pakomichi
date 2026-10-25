@@ -81,6 +81,32 @@ impl TestKey {
         self.dir.join("keyring.gpg")
     }
 
+    /// Imports `other`'s secret key into this key's home, so one `gpg`
+    /// run can sign with both; returns a keyring with both public keys.
+    pub(crate) fn also_holding(&self, other: &TestKey) -> TestResult<PathBuf> {
+        let secret = self.dir.join("other-secret.gpg");
+        let secret_text = secret.to_string_lossy().into_owned();
+        gpg(
+            &other.homedir(),
+            &[
+                "--pinentry-mode",
+                "loopback",
+                "--passphrase",
+                "",
+                "--output",
+                &secret_text,
+                "--export-secret-keys",
+                other.fingerprint.as_str(),
+            ],
+        )?;
+        gpg(&self.homedir(), &["--import", &secret_text])?;
+        let both = self.dir.join("both.gpg");
+        let mut bytes = fs::read(self.keyring())?;
+        bytes.extend(fs::read(other.keyring())?);
+        fs::write(&both, bytes)?;
+        Ok(both)
+    }
+
     /// Signs with explicit `gpg` options, bypassing the production signer.
     pub(crate) fn sign_with(&self, text: &[u8], options: &[&str]) -> TestResult<Vec<u8>> {
         let mut child = Command::new("/usr/bin/gpg")

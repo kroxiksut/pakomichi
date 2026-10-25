@@ -19,7 +19,10 @@ The tables below describe meaning; physical columns, indexes, and migrations are
 | `ArtifactCache` | content SHA, bytes path, verified state, refcount/pins, download state; never use the filename as identity |
 | `Snapshot` | generation (monotonic, never reused), repo, native backend, list manifests, hashes, signatures, valid_from/until, state staged/published/retired, reserved CAS refs, retention deadline |
 | `DecisionLog` | event ID, object ID, rule/version, allow/hold/deny, human-readable reason, evidence, timestamp; reproducibility of decisions. Append-only; the evidence is the canonical facts JSON of `policy::Facts`; an `allow` has an empty reason code; a decision equal to the object's latest one from the same facts is not written again; replaying a row decides its facts again and reports a different outcome, a changed rule version, or unreadable facts (P2-009b) |
-| `AdminOperation` | ID, desired state, previous hashes, staged files, apply/rollback status; recovery after an interruption between SQLite and configuration |
+| `NameActivation` | source, ecosystem, native name, activated at, ended at; the activation journal (migration 0003). A name is open in at most one source; a row only ends, once, and is never deleted; "activated earlier" of the admission decision is an open row of the source (P2-009b) |
+| `FamilyOutsider` | family, ecosystem, native name (migration 0005, ADR-036 point 3): a name of the source with an identity row that is not a family member, because it was seen outside the family or dropped from it while artifacts still name it. Only a confirmed family removes the mark |
+| `AttestedSigner` | source, workflow path, ref rule (`tag` or `refs/heads/<branch>`), confirmed at (migration 0004, ADR-036 point 1). Append-only; the latest row of a source is its signer, and a source without one is admitted at Strict or Pinned only |
+| `AdminOperation` | ID, desired state, previous hashes, staged files, apply/rollback status; recovery after an interruption between SQLite and configuration. For APT: `planned` → `verified`, `rolled_back`, or `failed`, and `reconciled` after recovery (`delivery-recovery.md`) |
 
 ## Key relationships
 

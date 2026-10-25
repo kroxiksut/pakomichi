@@ -43,7 +43,22 @@ try {
     Invoke-Step "secret signatures" { & "$PSScriptRoot/secret-check.ps1" }
     Invoke-Step "cargo fmt" { cargo fmt --check }
     Invoke-Step "cargo clippy" { cargo clippy --workspace --all-targets --all-features --locked -- -D warnings }
-    Invoke-Step "cargo test" { cargo test --workspace --all-targets --all-features --locked }
+    # nextest runs each test in its own process and ends a hung one
+    # (.config/nextest.toml). It skips doctests, and so does cargo test
+    # with --all-targets, so they run as a separate step.
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    & cargo nextest --version *> $null
+    $hasNextest = $LASTEXITCODE -eq 0
+    $ErrorActionPreference = $previousPreference
+    if ($hasNextest) {
+        Invoke-Step "cargo nextest" { cargo nextest run --workspace --all-targets --all-features --locked }
+    }
+    else {
+        Write-Output "warning: cargo-nextest is not installed; running cargo test instead"
+        Invoke-Step "cargo test" { cargo test --workspace --all-targets --all-features --locked }
+    }
+    Invoke-Step "doctests" { cargo test --workspace --doc --all-features --locked }
     Invoke-Step "schema migration tests" {
         & $python.Source -m unittest discover -s tests -p "test_*.py" -v
     }

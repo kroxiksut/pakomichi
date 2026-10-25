@@ -1,0 +1,13 @@
+S01-status-empty	PASS	exit 0
+S02-yes-is-refused	PASS	exit 2
+S03-no-terminal-changes-nothing	PASS	exit 3
+S04-add-confirms-the-signer	PASS	exit 0; signer=.github/workflows/mutable-attested.yml@refs/heads/main
+S05-activate-needs-a-sync	PASS	exit 1
+S06-sync-proposes-and-publishes-nothing	PASS	exit 0; files: 
+S07-unknown-name-is-refused	PASS	exit 1
+S08-activate-publishes-and-pins	FAIL	exit 0; 
+S09-apt-update-is-clean	PASS	exit 0
+S10-candidate-from-pakomichi-at-990	FAIL	candidate 
+S11-apt-installs-it	FAIL	installed 
+S12-status-shows-the-activation	FAIL	github-1429307950  https://github.com/kroxiksut/pchi-test  state=registered  floor=attested  signer=.github/workflows/mutable-attested.yml@refs/heads/main  pinned_consent=no  activated=-
+S13-second-sync-changes-nothing	PASS	exit 0

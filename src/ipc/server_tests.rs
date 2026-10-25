@@ -57,18 +57,32 @@ struct TestService {
 }
 
 impl Service for Arc<TestService> {
-    fn plan(&self, action: AdminAction) -> String {
-        format!(
-            "{}: {}",
-            action.as_str(),
-            self.plan.lock().unwrap_or_else(PoisonError::into_inner)
-        )
+    fn plan(&self, action: &AdminAction) -> Result<Plan, ActionRefusal> {
+        Ok(Plan {
+            summary: format!(
+                "{}: {}",
+                action.as_str(),
+                self.plan.lock().unwrap_or_else(PoisonError::into_inner)
+            ),
+            changes: Vec::new(),
+        })
     }
 
-    fn run(&self, _action: AdminAction) -> bool {
+    fn run(
+        &self,
+        _action: &AdminAction,
+        _plan: &Plan,
+    ) -> Result<OperationOutcome, OperationOutcome> {
         thread::sleep(self.run_for);
         self.runs.fetch_add(1, Ordering::SeqCst);
-        true
+        Ok(OperationOutcome {
+            message: "done".to_owned(),
+            reason_codes: Vec::new(),
+        })
+    }
+
+    fn sources(&self) -> Vec<SourceStatus> {
+        Vec::new()
     }
 }
 
@@ -195,7 +209,7 @@ fn administrative_requests_are_unknown_on_the_status_channel() -> TestResult {
     let harness = harness()?;
     let mut stream = connect(&harness.status)?;
     let plan = encode(&AdminRequest::Plan(PlanRequest {
-        action: AdminAction::DoctorRepair,
+        action: AdminAction::DoctorRepair(Empty {}),
     }));
     let response = ask(&mut stream, &plan)?;
     assert_eq!(error_kind(&response), Some(ErrorKind::Malformed));
@@ -256,7 +270,7 @@ fn a_confirmation_without_its_field_or_with_false_starts_nothing() -> TestResult
     let Response::Plan(plan) = request(
         &mut stream,
         &AdminRequest::Plan(PlanRequest {
-            action: AdminAction::DoctorRepair,
+            action: AdminAction::DoctorRepair(Empty {}),
         }),
     )?
     else {
@@ -317,7 +331,7 @@ fn a_confirmed_plan_runs_once_as_an_operation() -> TestResult {
     let Response::Plan(plan) = request(
         &mut stream,
         &AdminRequest::Plan(PlanRequest {
-            action: AdminAction::DoctorRepair,
+            action: AdminAction::DoctorRepair(Empty {}),
         }),
     )?
     else {
@@ -325,7 +339,13 @@ fn a_confirmed_plan_runs_once_as_an_operation() -> TestResult {
     };
     assert_eq!(
         plan.plan_digest,
-        plan_digest(AdminAction::DoctorRepair, &plan.summary)
+        plan_digest(
+            &AdminAction::DoctorRepair(Empty {}),
+            &Plan {
+                summary: plan.summary.clone(),
+                changes: plan.changes.clone(),
+            }
+        )
     );
     let confirm = AdminRequest::Confirm(ConfirmRequest {
         plan_digest: plan.plan_digest.clone(),
@@ -368,7 +388,7 @@ fn a_plan_that_changed_since_it_was_shown_is_refused() -> TestResult {
     let Response::Plan(plan) = request(
         &mut stream,
         &AdminRequest::Plan(PlanRequest {
-            action: AdminAction::DoctorRepair,
+            action: AdminAction::DoctorRepair(Empty {}),
         }),
     )?
     else {
@@ -407,7 +427,7 @@ fn unknown_and_foreign_operations_get_the_same_answer() -> TestResult {
     let Response::Plan(plan) = request(
         &mut stream,
         &AdminRequest::Plan(PlanRequest {
-            action: AdminAction::DoctorRepair,
+            action: AdminAction::DoctorRepair(Empty {}),
         }),
     )?
     else {
@@ -452,7 +472,7 @@ fn ping_answers_while_a_long_operation_runs() -> TestResult {
     let Response::Plan(plan) = request(
         &mut admin,
         &AdminRequest::Plan(PlanRequest {
-            action: AdminAction::DoctorRepair,
+            action: AdminAction::DoctorRepair(Empty {}),
         }),
     )?
     else {
@@ -568,7 +588,7 @@ fn a_large_response_is_read_completely_before_the_close() -> TestResult {
     let Response::Plan(plan) = request(
         &mut stream,
         &AdminRequest::Plan(PlanRequest {
-            action: AdminAction::DoctorRepair,
+            action: AdminAction::DoctorRepair(Empty {}),
         }),
     )?
     else {

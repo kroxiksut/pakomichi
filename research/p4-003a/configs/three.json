@@ -1,0 +1,1 @@
+{"port":18080,"keyring_hex":"74657374206b657972696e672033","sources":[{"source_key":"sampleapp","repositories":[{"label":"pakomichi-sampleapp-strict","activated":["sampleapp","sampleapp-doc"]}]}]}

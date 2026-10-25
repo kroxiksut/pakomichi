@@ -25,8 +25,9 @@ use serde::{Deserialize, Serialize};
 use crate::cas::Sha256Digest;
 use crate::error::ReasonCode;
 
-/// The version of the facts format.
-pub const FACTS_SCHEMA_VERSION: u32 = 1;
+/// The version of the facts format. Version 2 (P2-009b) carries the reason
+/// why the system namespace is unknown; version 1 rows are still read.
+pub const FACTS_SCHEMA_VERSION: u32 = 2;
 
 /// The outcome of one decision.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -190,8 +191,7 @@ pub struct ArtifactFacts {
     pub malformed: bool,
     /// The release is not clearly on the followed channel.
     pub channel_unclear: bool,
-    /// `None` when the system namespace could not be computed.
-    pub namespace: Option<NamespaceFacts>,
+    pub namespace: Namespace,
     /// The reason the family admission held the artifact, if it did.
     pub family_hold: Option<ReasonCode>,
     /// The reason the compatibility check held the artifact, if it did.
@@ -215,6 +215,26 @@ pub struct NamespaceFacts {
     /// A `Provides`, `Replaces`, or `Obsoletes` names a member.
     pub relation_conflict: bool,
     pub own_name: OwnName,
+}
+
+/// The system namespace as the decision sees it.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Namespace {
+    Known(NamespaceFacts),
+    /// It could not be computed; the code is the collector's
+    /// (`namespace::collect::CollectError::reason_code`), so an unsupported
+    /// platform is not reported as missing metadata.
+    Unknown(ReasonCode),
+}
+
+impl Namespace {
+    pub fn known_mut(&mut self) -> Option<&mut NamespaceFacts> {
+        match self {
+            Self::Known(facts) => Some(facts),
+            Self::Unknown(_) => None,
+        }
+    }
 }
 
 /// Everything one decision is made from.
@@ -262,14 +282,22 @@ impl Facts {
     }
 
     /// Reads facts back from the log; an unknown field or version is
-    /// refused (ADR-019 point 2).
+    /// refused (ADR-019 point 2). Version 1 is read as it was decided: an
+    /// unknown namespace there always meant `E_SYSTEM_NAMESPACE_UNKNOWN`.
     pub fn from_json(text: &str) -> Result<Self, FactsError> {
-        let facts: Self =
-            serde_json::from_str(text).map_err(|error| FactsError::Malformed(error.to_string()))?;
-        if facts.schema_version != FACTS_SCHEMA_VERSION {
-            return Err(FactsError::UnsupportedVersion(facts.schema_version));
+        #[derive(Deserialize)]
+        struct Version {
+            schema_version: u32,
         }
-        Ok(facts)
+        let malformed = |error: serde_json::Error| FactsError::Malformed(error.to_string());
+        let version: Version = serde_json::from_str(text).map_err(malformed)?;
+        match version.schema_version {
+            FACTS_SCHEMA_VERSION => serde_json::from_str(text).map_err(malformed),
+            1 => serde_json::from_str::<v1::Facts>(text)
+                .map(v1::Facts::upgrade)
+                .map_err(malformed),
+            other => Err(FactsError::UnsupportedVersion(other)),
+        }
     }
 
     /// The digest of the canonical JSON.
@@ -457,12 +485,11 @@ fn objection(facts: &Facts, mode: &EffectiveMode) -> Option<(Rule, ReasonCode, S
             "the family admission holds the artifact",
         );
     }
-    let Some(namespace) = &artifact.namespace else {
-        return object(
-            Rule::Composition,
-            ReasonCode::ESystemNamespaceUnknown,
-            "the system namespace is unknown",
-        );
+    let namespace = match &artifact.namespace {
+        Namespace::Known(namespace) => namespace,
+        Namespace::Unknown(code) => {
+            return object(Rule::Composition, *code, "the system namespace is unknown");
+        }
     };
     if namespace.relation_conflict {
         return object(
@@ -526,7 +553,72 @@ fn objection(facts: &Facts, mode: &EffectiveMode) -> Option<(Rule, ReasonCode, S
     None
 }
 
+pub mod assemble;
 pub mod level;
+
+/// The facts format of version 1, read for replay only.
+mod v1 {
+    use serde::Deserialize;
+
+    use super::{Evidence, Namespace, NamespaceFacts, SourceFacts};
+    use crate::error::ReasonCode;
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub(super) struct Facts {
+        schema_version: u32,
+        source: SourceFacts,
+        artifact: ArtifactFacts,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct ArtifactFacts {
+        name: String,
+        version: String,
+        sha256: String,
+        evidence: Evidence,
+        asset_mutated: bool,
+        malformed: bool,
+        channel_unclear: bool,
+        namespace: Option<NamespaceFacts>,
+        family_hold: Option<ReasonCode>,
+        compat_hold: Option<ReasonCode>,
+        ambiguous_with_other_source: bool,
+        provided_elsewhere: bool,
+        activated_earlier: bool,
+        migration_confirmed: bool,
+    }
+
+    impl Facts {
+        pub(super) fn upgrade(self) -> super::Facts {
+            debug_assert_eq!(self.schema_version, 1);
+            let a = self.artifact;
+            super::Facts::new(
+                self.source,
+                super::ArtifactFacts {
+                    name: a.name,
+                    version: a.version,
+                    sha256: a.sha256,
+                    evidence: a.evidence,
+                    asset_mutated: a.asset_mutated,
+                    malformed: a.malformed,
+                    channel_unclear: a.channel_unclear,
+                    namespace: a.namespace.map_or(
+                        Namespace::Unknown(ReasonCode::ESystemNamespaceUnknown),
+                        Namespace::Known,
+                    ),
+                    family_hold: a.family_hold,
+                    compat_hold: a.compat_hold,
+                    ambiguous_with_other_source: a.ambiguous_with_other_source,
+                    provided_elsewhere: a.provided_elsewhere,
+                    activated_earlier: a.activated_earlier,
+                    migration_confirmed: a.migration_confirmed,
+                },
+            )
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests;

@@ -13,6 +13,7 @@
 //! hyper-based transport (`http`) runs in the long-lived network process
 //! (ADR-017) over rustls with the system CA store (`tls`).
 
+mod address;
 mod asset;
 mod client;
 mod conditional;
@@ -26,6 +27,7 @@ mod token;
 mod transport;
 mod wire;
 
+pub use address::{AddressError, parse_repository_address};
 pub use asset::{
     ASSET_HOSTS, AddressRange, AssetDownloader, AssetLocator, DownloadConfig, DownloadError,
     RangeRefused,

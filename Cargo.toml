@@ -114,6 +114,9 @@ listenfd.workspace = true
 rpm = { workspace = true, features = ["payload"] }
 tokio = { workspace = true, features = ["io-util", "macros"] }
 rcgen.workspace = true
+# TEST ONLY: clears close-on-exec so a child test process inherits sockets
+# the way systemd passes them (`process` tests).
+nix = { workspace = true, features = ["fs"] }
 # TEST ONLY: rewrites attestation payloads in the verifier's negative tests
 # (already in the graph through sigstore-types).
 base64 = { version = "=0.23.1", default-features = false, features = ["alloc"] }

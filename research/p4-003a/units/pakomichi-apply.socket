@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# P4-003a test unit (ADR-029 point 2): one root applier instance per
+# connection. Only the state owner's user may open the socket; the
+# instance checks the peer again from SO_PEERCRED.
+
+[Unit]
+Description=Pakomichi APT applier socket (P4-003a test)
+
+[Socket]
+ListenStream=/run/pakomichi/apply.sock
+SocketUser=pakomichi
+SocketMode=0600
+Accept=yes
+MaxConnections=4
+
+[Install]
+WantedBy=sockets.target

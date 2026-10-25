@@ -498,3 +498,40 @@ mod tests {
         Ok(())
     }
 }
+
+/// One attestation of `GET .../attestations/{subject}`: the repository it
+/// was made in and its Sigstore bundle as JSON bytes.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AttestationBundle {
+    pub repository_id: Option<u64>,
+    pub bundle: Vec<u8>,
+}
+
+#[derive(Deserialize)]
+struct AttestationListingWire {
+    attestations: Vec<AttestationWire>,
+}
+
+#[derive(Deserialize)]
+struct AttestationWire {
+    repository_id: Option<u64>,
+    bundle: Option<serde_json::Value>,
+}
+
+/// Parses an attestation listing. Only bundles delivered in the response
+/// are taken: one available only at `bundle_url` lives on another host,
+/// which Pakomichi does not contact, so it counts as no evidence.
+pub fn parse_attestations(body: &[u8]) -> Result<Vec<AttestationBundle>, WireError> {
+    let wire: AttestationListingWire = decode(body)?;
+    Ok(wire
+        .attestations
+        .into_iter()
+        .filter_map(|attestation| {
+            let bundle = attestation.bundle.filter(serde_json::Value::is_object)?;
+            Some(AttestationBundle {
+                repository_id: attestation.repository_id,
+                bundle: serde_json::to_vec(&bundle).ok()?,
+            })
+        })
+        .collect())
+}

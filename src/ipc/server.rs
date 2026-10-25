@@ -18,9 +18,9 @@ use serde::de::DeserializeOwned;
 
 use super::frame::{MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, read_frame, write_frame};
 use super::protocol::{
-    AdminAction, AdminRequest, ConfirmRequest, Empty, ErrorKind, OperationId, OperationState,
-    OperationView, PlanView, Response, Started, StatusReport, StatusRequest, decode, encode,
-    plan_digest,
+    ActionRefusal, AdminAction, AdminRequest, ConfirmRequest, Empty, ErrorKind, OperationId,
+    OperationOutcome, OperationState, OperationView, Plan, PlanView, Response, SourceStatus,
+    Started, StatusReport, StatusRequest, decode, encode, plan_digest,
 };
 
 /// How long a shown plan can still be confirmed.
@@ -73,17 +73,24 @@ impl Limits {
 
 /// What the server asks of the service it fronts.
 pub trait Service: Send + Sync + 'static {
-    /// The plan text shown to the administrator; the same state must give
-    /// the same text, so that its digest can be checked at confirmation.
-    fn plan(&self, action: AdminAction) -> String;
-    /// Runs a confirmed action on the worker thread; `true` on success.
-    fn run(&self, action: AdminAction) -> bool;
+    /// The plan shown to the administrator; the same state must give the
+    /// same plan, so that its digest can be checked at confirmation.
+    fn plan(&self, action: &AdminAction) -> Result<Plan, ActionRefusal>;
+    /// Runs a confirmed action on the worker thread with the plan that was
+    /// confirmed.
+    fn run(&self, action: &AdminAction, plan: &Plan) -> Result<OperationOutcome, OperationOutcome>;
+    /// The sources for a status response. Answered on the connection's own
+    /// thread, so it must not wait for a running operation: serve a
+    /// snapshot that operations refresh, not a query that takes their lock.
+    fn sources(&self) -> Vec<SourceStatus>;
 }
 
 struct Operation {
     owner: u32,
     action: AdminAction,
+    plan: Plan,
     state: OperationState,
+    outcome: Option<OperationOutcome>,
     finished_at: Option<Instant>,
 }
 
@@ -326,9 +333,11 @@ impl<S: Service> Shared<S> {
                         )
                     })
                     .count();
+                drop(operations);
                 Response::Status(StatusReport {
                     service_version: env!("CARGO_PKG_VERSION").to_owned(),
                     operations_running: u32::try_from(running).unwrap_or(u32::MAX),
+                    sources: self.service.sources(),
                 })
             }
             Ask::Operation(text) => {
@@ -343,30 +352,35 @@ impl<S: Service> Shared<S> {
                     Some((id, operation)) if operation.owner == uid || uid == 0 => {
                         Response::Operation(OperationView {
                             operation_id: id.to_string(),
-                            action: operation.action,
+                            action: operation.action.clone(),
                             state: operation.state,
+                            outcome: operation.outcome.clone(),
                         })
                     }
                     _ => Response::error(ErrorKind::UnknownOperation, "no such operation"),
                 }
             }
             Ask::Plan(action) => {
-                let summary = self.service.plan(action);
-                let digest = plan_digest(action, &summary);
+                let plan = match self.service.plan(&action) {
+                    Ok(plan) => plan,
+                    Err(refusal) => return Response::Refused(refusal),
+                };
+                let digest = plan_digest(&action, &plan);
                 let mut plans = self.plans.lock().unwrap_or_else(PoisonError::into_inner);
                 plans.retain(|_, plan| plan.shown_at.elapsed() < PLAN_LIFETIME);
                 plans.insert(
                     digest.clone(),
                     PendingPlan {
                         owner: uid,
-                        action,
+                        action: action.clone(),
                         shown_at: Instant::now(),
                     },
                 );
                 Response::Plan(PlanView {
                     action,
                     plan_digest: digest,
-                    summary,
+                    summary: plan.summary,
+                    changes: plan.changes,
                 })
             }
             Ask::Confirm(confirm) => self.confirm(&confirm, uid),
@@ -390,10 +404,15 @@ impl<S: Service> Shared<S> {
             }
         };
         // The plan the server would run now must be the plan that was shown.
-        let current = plan_digest(pending.action, &self.service.plan(pending.action));
-        if current != confirm.plan_digest {
-            return Response::error(ErrorKind::StalePlan, "the plan changed since it was shown");
-        }
+        let plan = match self.service.plan(&pending.action) {
+            Ok(plan) if plan_digest(&pending.action, &plan) == confirm.plan_digest => plan,
+            _ => {
+                return Response::error(
+                    ErrorKind::StalePlan,
+                    "the plan changed since it was shown",
+                );
+            }
+        };
         let Ok(id) = random_operation_id() else {
             return Response::error(ErrorKind::Internal, "no random source; nothing was started");
         };
@@ -408,7 +427,9 @@ impl<S: Service> Shared<S> {
                 Operation {
                     owner: uid,
                     action: pending.action,
+                    plan,
                     state: OperationState::Queued,
+                    outcome: None,
                     finished_at: None,
                 },
             );
@@ -419,7 +440,13 @@ impl<S: Service> Shared<S> {
             .unwrap_or_else(PoisonError::into_inner)
             .send(id);
         if sent.is_err() {
-            self.finish(id, false);
+            self.finish(
+                id,
+                Err(OperationOutcome {
+                    message: "the operation worker is gone; nothing was run".to_owned(),
+                    reason_codes: Vec::new(),
+                }),
+            );
         }
         Response::Started(Started {
             operation_id: id.to_string(),
@@ -427,7 +454,7 @@ impl<S: Service> Shared<S> {
     }
 
     fn run_operation(&self, id: OperationId) {
-        let action = {
+        let job = {
             let mut operations = self
                 .operations
                 .lock()
@@ -436,23 +463,24 @@ impl<S: Service> Shared<S> {
                 return;
             };
             operation.state = OperationState::Running;
-            operation.action
+            (operation.action.clone(), operation.plan.clone())
         };
-        let succeeded = self.service.run(action);
-        self.finish(id, succeeded);
+        let outcome = self.service.run(&job.0, &job.1);
+        self.finish(id, outcome);
     }
 
-    fn finish(&self, id: OperationId, succeeded: bool) {
+    fn finish(&self, id: OperationId, outcome: Result<OperationOutcome, OperationOutcome>) {
         let mut operations = self
             .operations
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
         if let Some(operation) = operations.get_mut(&id) {
-            operation.state = if succeeded {
-                OperationState::Succeeded
-            } else {
-                OperationState::Failed
+            let (state, outcome) = match outcome {
+                Ok(outcome) => (OperationState::Succeeded, outcome),
+                Err(outcome) => (OperationState::Failed, outcome),
             };
+            operation.state = state;
+            operation.outcome = Some(outcome);
             operation.finished_at = Some(Instant::now());
         }
     }
@@ -474,7 +502,7 @@ fn prune_finished(operations: &mut HashMap<OperationId, Operation>) {
 }
 
 /// 128 bits from the kernel's random source.
-fn random_operation_id() -> io::Result<OperationId> {
+pub(crate) fn random_operation_id() -> io::Result<OperationId> {
     let mut bytes = [0_u8; 16];
     File::open("/dev/urandom")?.read_exact(&mut bytes)?;
     Ok(OperationId::from_bytes(bytes))

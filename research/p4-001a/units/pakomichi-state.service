@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# P4-001a test unit (ADR-035): the state owner with the lazy-fetch, status,
+# and administrative channels and the synchronization pipeline. The key
+# fingerprint and an operator address range come from
+# /etc/pakomichi/state.env.
+
+[Unit]
+Description=Pakomichi state owner (P4-001a test)
+Requires=pakomichi-fetch.socket pakomichi-status.socket pakomichi-admin.socket
+After=pakomichi-fetch.socket pakomichi-status.socket pakomichi-admin.socket network-online.target
+
+[Service]
+Type=exec
+User=pakomichi
+Group=pakomichi
+Sockets=pakomichi-fetch.socket pakomichi-status.socket pakomichi-admin.socket
+EnvironmentFile=/etc/pakomichi/state.env
+ExecStart=/usr/local/bin/pakomichi-state --state-db /var/lib/pakomichi/state/state.db --cas-root /var/lib/pakomichi/cas --fetch-socket /run/pakomichi/fetch.sock --tuf-cache /var/lib/pakomichi/tuf --publish-root /var/lib/pakomichi/publish --sign-socket /run/pakomichi/sign.sock --inspect-socket /run/pakomichi/inspect.sock --apply-socket /run/pakomichi/apply.sock --keyring /etc/pakomichi/metadata.gpg --key-fingerprint ${KEY} --loopback-port 18080 --collector-home /var/lib/pakomichi/collector $STATE_ARGS
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/pakomichi
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+UMask=0027

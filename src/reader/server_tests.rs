@@ -480,3 +480,24 @@ fn a_large_object_is_streamed_whole() -> TestResult {
     assert!(body == bytes);
     Ok(())
 }
+
+#[test]
+fn a_failed_fetch_answers_the_status_a_package_manager_understands() {
+    // APT and DNF show 502/504/507 as "repository problem, try later"; a
+    // 500 for everything would hide a full disk or a vanished asset.
+    use crate::lazy::FetchError;
+    for (status, expected) in [(502, 502), (504, 504), (507, 507), (503, 503)] {
+        let error = FetchError::Remote {
+            status,
+            message: "upstream".to_owned(),
+        };
+        let response = server::respond(Lookup::FetchFailed(error), false, "/repo/pool/x.deb");
+        assert_eq!(response.status().as_u16(), expected, "{status}");
+    }
+    let response = server::respond(
+        Lookup::FetchFailed(FetchError::NotPinned),
+        true,
+        "/repo/pool/x.deb",
+    );
+    assert_eq!(response.status().as_u16(), 500);
+}

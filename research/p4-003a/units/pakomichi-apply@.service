@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# P4-003a test unit (ADR-009, ADR-017 point 7): applies one desired APT
+# configuration as root. Root without capabilities: it writes only
+# root-owned files in the three directories below, and the rest of the
+# file system is read-only to it.
+
+[Unit]
+Description=Pakomichi APT applier instance (P4-003a test)
+
+[Service]
+Type=exec
+ExecStart=/usr/local/bin/pakomichi-applier --socket /run/pakomichi/apply.sock --lock /run/pakomichi/apply.lock
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+RuntimeMaxSec=300
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=yes
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/etc/apt/sources.list.d /etc/apt/preferences.d /etc/apt/keyrings /run/pakomichi
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+UMask=0022

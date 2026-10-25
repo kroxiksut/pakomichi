@@ -22,8 +22,9 @@ use super::release_pin::GitObjectId;
 use super::token::{CredentialId, Token};
 use super::transport::{API_ORIGIN, ApiRequest, Transport, TransportError};
 use super::wire::{
-    self, MAX_RELEASES_PER_PAGE, MAX_RESPONSE_BYTES, Release, TagObjectKind, TagRef, WireError,
-    parse_release, parse_release_page, parse_repository, parse_tag_object, parse_tag_ref,
+    self, AttestationBundle, MAX_RELEASES_PER_PAGE, MAX_RESPONSE_BYTES, Release, TagObjectKind,
+    TagRef, WireError, parse_attestations, parse_release, parse_release_page, parse_repository,
+    parse_tag_object, parse_tag_ref,
 };
 use crate::error::ReasonCode;
 
@@ -406,6 +407,31 @@ impl<T: Transport> GitHubClient<T> {
             percent_encode(tag)
         );
         not_found_as_none(self.fetch(path, parse_release).await)
+    }
+
+    /// The attestation bundles GitHub keeps for exactly these bytes in this
+    /// repository, by repository ID, so a renamed or replaced name cannot
+    /// lend another repository's attestations. A bundle made in another
+    /// repository is dropped here; the verifier still checks the IDs in the
+    /// certificate. No attestation is an empty list, not an error.
+    pub async fn attestation_bundles(
+        &self,
+        repository: RepositoryId,
+        subject: &crate::cas::Sha256Digest,
+    ) -> Result<Vec<Vec<u8>>, GitHubError> {
+        let path = format!(
+            "/repositories/{repository}/attestations/sha256:{}?per_page=100",
+            subject.to_hex()
+        );
+        let Some(listing) = not_found_as_none(self.fetch(path, parse_attestations).await)? else {
+            return Ok(Vec::new());
+        };
+        Ok(listing
+            .value
+            .into_iter()
+            .filter(|attestation| attestation.repository_id == Some(repository.get()))
+            .map(|AttestationBundle { bundle, .. }| bundle)
+            .collect())
     }
 
     /// `GET /repositories/{id}/git/ref/tags/{tag}` exactly as returned, never

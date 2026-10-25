@@ -19,7 +19,10 @@
 | `ArtifactCache` | content SHA, bytes path, verified state, refcount/pins, download state; никогда не использовать filename как идентичность |
 | `Snapshot` | generation (монотонный, никогда не используется повторно), repo, native backend, list manifests, hashes, signatures, valid_from/until, state staged/published/retired, reserved CAS refs, срок удержания |
 | `DecisionLog` | event ID, object ID, rule/version, allow/hold/deny, human-readable reason, evidence, timestamp; воспроизводимость решений. Только дописывание; доказательство — канонический JSON фактов `policy::Facts`; у `allow` пустой код причины; решение, равное последнему решению объекта по тем же фактам, повторно не пишется; воспроизведение записи заново решает её факты и сообщает о другом исходе, изменившейся версии правила или нечитаемых фактах (P2-009b) |
-| `AdminOperation` | ID, desired state, previous hashes, staged files, apply/rollback status; восстановление после прерывания между SQLite и конфигурацией |
+| `NameActivation` | источник, экосистема, родное имя, время активации, время окончания; журнал активаций (миграция 0003). Имя открыто не более чем в одном источнике; строка только закрывается, один раз, и не удаляется; «активировано раньше» в решении о допуске — открытая строка источника (P2-009b) |
+| `FamilyOutsider` | семейство, экосистема, родное имя (миграция 0005, ADR-036, пункт 3): имя источника со строкой идентичности, которое не входит в семейство, потому что замечено вне семейства или исключено из него, пока на него ссылаются артефакты. Снимает пометку только подтверждённое семейство |
+| `AttestedSigner` | источник, путь workflow, правило ref (`tag` или `refs/heads/<ветка>`), время подтверждения (миграция 0004, ADR-036, пункт 1). Только дописывание; последняя строка источника — его подписант, а источник без строки допускается только на уровнях Strict и Pinned |
+| `AdminOperation` | ID, desired state, previous hashes, staged files, apply/rollback status; восстановление после прерывания между SQLite и конфигурацией. Для APT: `planned` → `verified`, `rolled_back` или `failed`, после восстановления — `reconciled` (`delivery-recovery.md`) |
 
 ## Ключевые связи
 

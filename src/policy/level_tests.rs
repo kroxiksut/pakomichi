@@ -5,7 +5,8 @@ use std::collections::BTreeSet;
 use super::*;
 use crate::error::ReasonCode;
 use crate::policy::{
-    ArtifactFacts, Facts, Identity, NamespaceFacts, OwnName, SourceFacts, SourceMode, decide,
+    ArtifactFacts, Facts, Identity, Namespace, NamespaceFacts, OwnName, SourceFacts, SourceMode,
+    decide,
 };
 
 const DIGEST: &str = "8fcda58d824b4fea8f98e036083f398f497941af4b8c15de5dac02dd900576fd";
@@ -45,7 +46,7 @@ fn admission(level: &LevelDecision, pinned_consent: bool) -> crate::policy::Deci
             asset_mutated: false,
             malformed: false,
             channel_unclear: false,
-            namespace: Some(NamespaceFacts {
+            namespace: Namespace::Known(NamespaceFacts {
                 relation_conflict: false,
                 own_name: OwnName::Free,
             }),
@@ -349,7 +350,7 @@ fn n039_an_asset_changed_after_approval_is_denied_as_mutated() {
             asset_mutated: true,
             malformed: false,
             channel_unclear: false,
-            namespace: Some(NamespaceFacts {
+            namespace: Namespace::Known(NamespaceFacts {
                 relation_conflict: false,
                 own_name: OwnName::Free,
             }),
@@ -399,7 +400,7 @@ fn n037_a_pinned_source_is_never_preferred_and_never_displaces_a_distribution_pa
                 asset_mutated: false,
                 malformed: false,
                 channel_unclear: false,
-                namespace: Some(NamespaceFacts {
+                namespace: Namespace::Known(NamespaceFacts {
                     relation_conflict: false,
                     own_name: OwnName::Free,
                 }),
@@ -419,7 +420,7 @@ fn n037_a_pinned_source_is_never_preferred_and_never_displaces_a_distribution_pa
     // A name the distribution ships, even with an explicit migration.
     for own_name in [OwnName::NeedsMigration, OwnName::OsPart] {
         let mut facts = base(SourceMode::Preferred);
-        if let Some(namespace) = facts.artifact.namespace.as_mut() {
+        if let Some(namespace) = facts.artifact.namespace.known_mut() {
             namespace.own_name = own_name;
         }
         facts.artifact.migration_confirmed = true;

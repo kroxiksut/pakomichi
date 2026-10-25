@@ -225,7 +225,7 @@ where
 
 /// Pins from the state database: the asset of an accepted artifact with
 /// these exact bytes (`StateOwner::pinned_asset`).
-pub struct StatePins(pub Mutex<crate::state::StateOwner>);
+pub struct StatePins(pub std::sync::Arc<Mutex<crate::state::StateOwner>>);
 
 impl Locate for StatePins {
     fn locate(&self, object: &ExpectedObject) -> Option<AssetLocator> {

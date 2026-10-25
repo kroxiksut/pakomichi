@@ -559,6 +559,132 @@ fn workflow_paths_must_be_workflow_files() -> TestResult {
     Ok(())
 }
 
+// --------------------------------------------------------------- discovery
+
+fn discover(
+    repository: &PinnedRepository,
+    bundles: &[&[u8]],
+    commit: &str,
+    sha256: &str,
+) -> Result<Result<Vec<AttestedSigner>, AttestationFailure>, Box<dyn std::error::Error>> {
+    Ok(verifier()?.discover_attested(
+        bundles,
+        repository,
+        TAG,
+        GitObjectId::from_hex(commit).map_err(|_| "bad commit")?,
+        digest(sha256)?,
+    ))
+}
+
+#[test]
+fn discovery_names_the_signer_that_then_verifies() -> TestResult {
+    let repository = original()?;
+    let bundles = lines(V1);
+    // The same provenance twice is one signer, not an ambiguity.
+    let twice = [bundles[1], bundles[1], bundles[0]];
+    let found = discover(&repository, &twice, COMMIT, ASSET_SHA256)??;
+    let expected = AttestedSigner::new(WORKFLOW, SignerRef::Branch("main".into()))
+        .map_err(|_| "bad workflow")?;
+    assert_eq!(found, vec![expected.clone()]);
+    // What discovery shows is exactly what synchronization then requires.
+    let commit = GitObjectId::from_hex(COMMIT).map_err(|_| "bad commit")?;
+    let pinned =
+        ExpectedProvenance::for_signer(&repository, &expected, TAG, commit, digest(ASSET_SHA256)?);
+    assert!(verifier()?.verify_attested(&bundles, &pinned).is_ok());
+    Ok(())
+}
+
+/// A pin, the listed bundles, the release commit, the asset digest, and
+/// why nothing may be named.
+type DiscoveryCase<'a> = (
+    &'a PinnedRepository,
+    Vec<&'a [u8]>,
+    &'a str,
+    &'a str,
+    SubReason,
+);
+
+#[test]
+fn discovery_never_names_a_signer_the_pin_does_not_hold() -> TestResult {
+    // Discovery reads the workflow from the certificate; everything else
+    // must still bind, or an attacker's provenance would choose the signer.
+    let original = original()?;
+    let v1 = lines(V1);
+    let fork = lines(FORK);
+    let transferred = pin(REPO_ID, ORG_OWNER, &[], "pchi-test-org", "pchi-test")?;
+    let forged_payload = tampered(|bundle| {
+        let payload = bundle.pointer_mut("/dsseEnvelope/payload")?;
+        let mut statement: Value =
+            serde_json::from_slice(&STANDARD.decode(payload.as_str()?).ok()?).ok()?;
+        *statement.pointer_mut("/predicate/buildDefinition/externalParameters/workflow/path")? =
+            Value::String(".github/workflows/evil.yml".into());
+        *payload = Value::String(STANDARD.encode(serde_json::to_vec(&statement).ok()?));
+        Some(())
+    })?;
+    let broken_log =
+        tampered(|bundle| flip_base64(tlog(bundle)?.pointer_mut("/inclusionProof/hashes/0")?))?;
+    let cases: [DiscoveryCase<'_>; 6] = [
+        // The fork's provenance under the original's pin (same owner).
+        (
+            &original,
+            fork.clone(),
+            FORK_COMMIT,
+            FORK_ASSET_SHA256,
+            SubReason::RepositoryIdMismatch,
+        ),
+        // An owner that was never confirmed.
+        (
+            &transferred,
+            v1.clone(),
+            COMMIT,
+            ASSET_SHA256,
+            SubReason::OwnerIdMismatch,
+        ),
+        // Built from another commit than the release tag's.
+        (
+            &original,
+            v1.clone(),
+            FORK_COMMIT,
+            ASSET_SHA256,
+            SubReason::CommitMismatch,
+        ),
+        // Other bytes than the asset.
+        (
+            &original,
+            v1.clone(),
+            COMMIT,
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            SubReason::ArtifactDigestMismatch,
+        ),
+        (
+            &original,
+            vec![forged_payload.as_slice()],
+            COMMIT,
+            ASSET_SHA256,
+            SubReason::SignatureInvalid,
+        ),
+        (
+            &original,
+            vec![broken_log.as_slice()],
+            COMMIT,
+            ASSET_SHA256,
+            SubReason::TlogInclusion,
+        ),
+    ];
+    for (repository, bundles, commit, sha256, reason) in cases {
+        assert_eq!(
+            sub_reason(discover(repository, &bundles, commit, sha256)?),
+            Some(reason)
+        );
+    }
+    // A release attestation alone names no Attested signer.
+    assert_eq!(
+        missing(discover(&original, &v1[..1], COMMIT, ASSET_SHA256)?),
+        Some(MissingEvidence::NoProvenance)
+    );
+    Ok(())
+}
+
 // --------------------------------------------------------- tampered bundles
 
 fn tampered(

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# P4-001a test unit (ADR-029 point 2): read-only status for any local user.
+
+[Unit]
+Description=Pakomichi status socket (P4-001a test)
+
+[Socket]
+ListenStream=/run/pakomichi/status.sock
+SocketMode=0666
+FileDescriptorName=status
+Service=pakomichi-state.service
+
+[Install]
+WantedBy=sockets.target

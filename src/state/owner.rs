@@ -19,7 +19,7 @@ use crate::error::ReasonCode;
 
 /// The schema version this build writes; `PRAGMA user_version` after the
 /// last migration.
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 5;
 
 struct Migration {
     version: i64,
@@ -28,7 +28,7 @@ struct Migration {
 }
 
 /// Forward-only migrations in order (`migrations/README.md`).
-const MIGRATIONS: [Migration; 2] = [
+const MIGRATIONS: [Migration; 5] = [
     Migration {
         version: 1,
         name: "initial",
@@ -38,6 +38,21 @@ const MIGRATIONS: [Migration; 2] = [
         version: 2,
         name: "repository_owner_confirmation",
         sql: include_str!("../../migrations/0002_repository_owner_confirmation.sql"),
+    },
+    Migration {
+        version: 3,
+        name: "name_activation",
+        sql: include_str!("../../migrations/0003_name_activation.sql"),
+    },
+    Migration {
+        version: 4,
+        name: "attested_signer",
+        sql: include_str!("../../migrations/0004_attested_signer.sql"),
+    },
+    Migration {
+        version: 5,
+        name: "family_membership",
+        sql: include_str!("../../migrations/0005_family_membership.sql"),
     },
 ];
 
@@ -74,6 +89,24 @@ pub enum StateError {
     OwnerConfirmationRefused {
         rule: &'static str,
     },
+    /// A stored row does not parse as this build writes it.
+    CorruptRow {
+        table: &'static str,
+        problem: &'static str,
+    },
+    /// An administrative operation is still `planned`: its outcome decides
+    /// what the files hold, so it is recovered before anything new starts.
+    OperationUnfinished,
+    /// The operation is not `planned` (unknown, or already finished).
+    OperationNotPlanned,
+    /// The name is activated in another source: one publisher per name.
+    NameActivatedElsewhere,
+    /// The repository is already a source, under this identifier.
+    SourceExists {
+        id: String,
+    },
+    /// A family revision older than the stored one.
+    StaleRevision,
     Sqlite(rusqlite::Error),
     Io(io::Error),
 }
@@ -114,6 +147,18 @@ impl fmt::Display for StateError {
             Self::OwnerConfirmationRefused { rule } => {
                 write!(formatter, "owner confirmation refused: {rule}")
             }
+            Self::CorruptRow { table, problem } => write!(formatter, "{table}: {problem}"),
+            Self::OperationUnfinished => {
+                formatter.write_str("an administrative operation is unfinished; recover it first")
+            }
+            Self::OperationNotPlanned => {
+                formatter.write_str("the operation is unknown or already finished")
+            }
+            Self::NameActivatedElsewhere => {
+                formatter.write_str("the name is activated in another source")
+            }
+            Self::SourceExists { id } => write!(formatter, "the repository is already source {id}"),
+            Self::StaleRevision => formatter.write_str("the family has a newer revision"),
             Self::Sqlite(error) => write!(formatter, "SQLite error: {error}"),
             Self::Io(error) => write!(formatter, "I/O error: {error}"),
         }

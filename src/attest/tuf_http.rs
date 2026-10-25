@@ -26,7 +26,8 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::time::timeout;
 
 use crate::github::{
-    HttpConfig, Resolve, SecureConnector, SystemResolver, TransportError, is_public_address,
+    AddressRange, HttpConfig, Resolve, SecureConnector, SystemResolver, TransportError,
+    is_public_address,
 };
 
 /// The TUF repositories Pakomichi talks to; nothing else is reachable.
@@ -41,6 +42,9 @@ pub struct TufHttp<C, R = SystemResolver> {
     resolver: R,
     config: HttpConfig,
     allow_loopback: bool,
+    /// Ranges the operator allows besides public addresses (a fake-IP
+    /// resolver of a local traffic router, P3-005b); never loopback.
+    extra_ranges: Vec<AddressRange>,
 }
 
 impl<C: SecureConnector> TufHttp<C, SystemResolver> {
@@ -56,7 +60,16 @@ impl<C: SecureConnector, R: Resolve> TufHttp<C, R> {
             resolver,
             config,
             allow_loopback: false,
+            extra_ranges: Vec::new(),
         }
+    }
+
+    /// Also accepts addresses in `ranges`, as the asset download does
+    /// (`DownloadConfig::extra_ranges`).
+    #[must_use]
+    pub fn allowing_ranges(mut self, ranges: Vec<AddressRange>) -> Self {
+        self.extra_ranges = ranges;
+        self
     }
 
     /// TEST ONLY: also accepts loopback addresses, for local test servers.
@@ -116,7 +129,12 @@ impl<C: SecureConnector, R: Resolve> TufHttp<C, R> {
             return Err(TransportError::Resolve);
         }
         let allowed = |address: &SocketAddr| {
-            is_public_address(address.ip()) || (self.allow_loopback && address.ip().is_loopback())
+            is_public_address(address.ip())
+                || self
+                    .extra_ranges
+                    .iter()
+                    .any(|range| range.contains(address.ip()))
+                || (self.allow_loopback && address.ip().is_loopback())
         };
         if !addresses.iter().all(allowed) {
             return Err(TransportError::AddressRefused);
@@ -244,5 +262,46 @@ where
                 .await
                 .map_err(transport_error)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::SocketAddr;
+
+    use super::*;
+    use crate::github::RustlsConnector;
+
+    fn http() -> Result<TufHttp<RustlsConnector>, Box<dyn std::error::Error>> {
+        Ok(TufHttp::new(
+            RustlsConnector::with_native_roots()?,
+            HttpConfig::default(),
+        ))
+    }
+
+    #[test]
+    fn only_an_allowed_range_opens_a_non_public_answer() -> Result<(), Box<dyn std::error::Error>> {
+        // A fake-IP resolver answers 198.18.0.0/15 for the TUF host: refused
+        // unless the operator allows that range, and the allowance opens
+        // nothing else.
+        let fake: SocketAddr = "198.18.3.222:443".parse()?;
+        let other: SocketAddr = "10.0.0.5:443".parse()?;
+        let loopback: SocketAddr = "127.0.0.1:443".parse()?;
+        assert!(matches!(
+            http()?.vet(&[fake]),
+            Err(TransportError::AddressRefused)
+        ));
+        let allowed = http()?.allowing_ranges(vec![AddressRange::parse("198.18.0.0/15")?]);
+        assert_eq!(allowed.vet(&[fake]).ok(), Some(vec![fake]));
+        for refused in [other, loopback] {
+            assert!(
+                matches!(
+                    allowed.vet(&[fake, refused]),
+                    Err(TransportError::AddressRefused)
+                ),
+                "{refused}"
+            );
+        }
+        Ok(())
     }
 }

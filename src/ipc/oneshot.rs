@@ -29,7 +29,7 @@ use nix::sys::socket::{getsockopt, sockopt::PeerCredentials};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use super::channels::{FetchResponse, InspectResponse, SignResponse};
+use super::channels::{ApplyResponse, FetchResponse, InspectResponse, SignResponse};
 use super::frame::{FrameError, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, read_frame, write_frame};
 use super::protocol::{ErrorBody, ErrorKind, PROTOCOL_VERSION, ProtocolError, decode, encode};
 use super::server::{Counters, Limits, PeerRule, take_slot};
@@ -60,6 +60,12 @@ impl ChannelResponse for SignResponse {
 }
 
 impl ChannelResponse for InspectResponse {
+    fn refused(error: ErrorBody) -> Self {
+        Self::Error(error)
+    }
+}
+
+impl ChannelResponse for ApplyResponse {
     fn refused(error: ErrorBody) -> Self {
         Self::Error(error)
     }

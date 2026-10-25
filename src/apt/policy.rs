@@ -455,6 +455,51 @@ pub fn judge(
     }
     selection
 }
+/// Installed names whose installed copy came from Pakomichi, for the
+/// system namespace collector (`CollectorConfig::installed_from_pakomichi`):
+/// such a package is not a member of the namespace, so Pakomichi's own
+/// family does not conflict with itself.
+///
+/// A name counts only when its installed version is one Pakomichi published
+/// for it (`published`) and APT lists that version in a repository of
+/// Pakomichi and nowhere else but the dpkg status. A version another source
+/// also offers may have been installed from there, so it is not counted:
+/// counting a foreign package as ours could let Pakomichi take its name
+/// over, while missing one of ours only holds an update that the
+/// activation already protects (`activated_earlier`). dpkg keeps no digest
+/// of the installed `.deb`, so a copy installed from a source that was
+/// removed since cannot be told apart; the version must still be one that
+/// Pakomichi published.
+pub fn installed_from_pakomichi(
+    policies: &[PackagePolicy],
+    published: &BTreeMap<String, BTreeSet<String>>,
+    ours: &[OurRepository],
+) -> BTreeSet<String> {
+    policies
+        .iter()
+        .filter_map(|policy| {
+            let installed = policy.installed.as_deref()?;
+            let versions = published.get(&policy.name)?;
+            if !versions
+                .iter()
+                .any(|version| same_version(version, installed))
+            {
+                return None;
+            }
+            let entries: Vec<&VersionEntry> = policy
+                .versions
+                .iter()
+                .filter(|entry| same_version(&entry.version, installed))
+                .collect();
+            let sources = || entries.iter().flat_map(|entry| &entry.sources);
+            let listed_by_us = sources().any(|source| is_pakomichi(source, ours));
+            let elsewhere =
+                sources().any(|source| !is_pakomichi(source, ours) && !is_installed_copy(source));
+            (listed_by_us && !elsewhere).then(|| policy.name.clone())
+        })
+        .collect()
+}
+
 #[cfg(test)]
 #[path = "policy_tests.rs"]
 mod tests;

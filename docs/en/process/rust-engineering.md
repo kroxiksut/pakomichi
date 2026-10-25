@@ -26,7 +26,7 @@ cargo test --workspace --all-targets --all-features
 cargo deny check
 ```
 
-The exact set of flags is approved after cost and compatibility are checked. Test the whole crate, not only `--lib`: integration tests lie outside the library target boundary. Network, package, and system scenarios from R-001…R-004 are still run in containers/VMs and are not replaced by Cargo unit tests.
+The exact set of flags is approved after cost and compatibility are checked. Test the whole crate, not only `--lib`: integration tests lie outside the library target boundary. When [cargo-nextest](https://nexte.st) is installed, `scripts/quality.ps1` runs the same targets through `cargo nextest run`: each test gets a process of its own, and `.config/nextest.toml` ends a hung test after five minutes instead of stalling the gate. Without it the script warns and falls back to `cargo test`. Neither nextest nor `cargo test --all-targets` runs doctests, so the gate runs `cargo test --workspace --doc` as a separate step. Network, package, and system scenarios from R-001…R-004 are still run in containers/VMs and are not replaced by Cargo unit tests.
 
 ## Baseline lints
 

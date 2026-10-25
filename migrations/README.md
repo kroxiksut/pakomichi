@@ -47,5 +47,25 @@ owner of the source's latest confirmation. A move back to an earlier owner is
 recorded as a transfer again. Like `trust_evidence`, confirmations keep their
 source row: a source that has confirmations cannot be deleted.
 
+Migration 0003 adds the activation journal `name_activation` (ADR-022 point
+3): one row per activation of a name by a source, open until the name is
+deactivated. A partial unique index keeps a name open in at most one source,
+and triggers let a row only end, once, and never be deleted. The admission
+decision reads "activated earlier" from it (`architecture/policy-engine.md`).
+
+Migration 0004 adds `attested_signer` (ADR-036 point 1): the workflow and
+ref rule an Attested provenance of the source must come from. Each row is one
+append-only confirmation by the administrator, and the latest row of a source
+is its signer; a source without a row has none and is admitted at Strict or
+Pinned only. The schema accepts only a file directly under
+`.github/workflows/` and a ref rule `tag` or `refs/heads/<branch>`.
+
+Migration 0005 adds `family_outsider` (ADR-036 point 3): a name of
+`package_identity` that is not a family member. An artifact row needs an
+identity row, so a name seen outside the family, or dropped from it while
+artifacts still name it, keeps its row with this mark; its artifacts are held
+with `E_FAMILY_UNAPPROVED`. Only saving a confirmed family removes the mark.
+Rows written before the migration were all members.
+
 The prose in this file is covered by the documentation terms described in
 `LICENSING.md`; SQL and other code-like material use `MIT OR Apache-2.0`.

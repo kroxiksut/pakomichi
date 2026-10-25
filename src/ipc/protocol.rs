@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::cas::Sha256Digest;
+use crate::error::ReasonCode;
 
 /// The only protocol version this build speaks.
 pub const PROTOCOL_VERSION: u64 = 1;
@@ -65,21 +66,135 @@ impl fmt::Display for OperationId {
     }
 }
 
-/// An administrative action that needs a plan and a confirmation.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+/// `pchi source add <url> [--observe]`.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceAdd {
+    /// The repository address; the server validates it (HTTPS, a
+    /// supported forge, no userinfo) and pins the repository by its ID.
+    pub url: String,
+    /// Only observe: never offered for activation. Required, so a client
+    /// that forgot it is refused instead of read as either value.
+    pub observe: bool,
+    /// The Attested signer the administrator names, `<workflow>@<ref rule>`
+    /// (`--workflow`, `--ref`; ADR-036 point 1). `None` lets the server
+    /// look for it; either way the plan shows the signer to be stored.
+    pub signer: Option<String>,
+}
+
+/// The mode an activation asks for (`policy-engine.md`).
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+pub enum ActivationPolicy {
+    Supplemental,
+    Preferred,
+}
+
+/// `pchi source activate <id> --packages <list> [--policy …]`.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceActivate {
+    pub source_id: String,
+    pub packages: Vec<String>,
+    pub policy: ActivationPolicy,
+}
+
+/// `pchi sync [<id>] [--force]`.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SyncTarget {
+    /// Every source when absent.
+    pub source_id: Option<String>,
+    pub force: bool,
+}
+
+/// An administrative action that needs a plan and a confirmation. Its
+/// arguments are part of the plan digest, so a confirmation applies to
+/// exactly these arguments.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AdminAction {
     /// `pchi doctor --repair`: `systemctl reset-failed` for the units, then
     /// start the socket (ADR-021 point 3.1).
-    DoctorRepair,
+    DoctorRepair(Empty),
+    SourceAdd(SourceAdd),
+    SourceActivate(SourceActivate),
+    Sync(SyncTarget),
 }
 
 impl AdminAction {
-    pub const fn as_str(self) -> &'static str {
+    pub const fn as_str(&self) -> &'static str {
         match self {
-            Self::DoctorRepair => "doctor_repair",
+            Self::DoctorRepair(_) => "doctor_repair",
+            Self::SourceAdd(_) => "source_add",
+            Self::SourceActivate(_) => "source_activate",
+            Self::Sync(_) => "sync",
         }
     }
+}
+
+/// What one change of a plan does (ADR-033 point 5).
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChangeKind {
+    /// A source is recorded and its repository pinned by ID.
+    AddSource,
+    /// The Attested signer of a source is recorded; `after` is
+    /// `<workflow>@<ref rule>` (ADR-036 point 1).
+    SetSigner,
+    /// A name is activated in a source (its pin is written); `after` is
+    /// the mode.
+    ActivateName,
+    /// The family of a source is saved at its next revision; `before` and
+    /// `after` describe the revision, state, and names (ADR-036 point 3).
+    ApproveFamily,
+    /// A source is synchronized; what it publishes follows the policy.
+    SyncSource,
+    /// A managed file is written; `before`/`after` are SHA-256 digests.
+    WriteFile,
+    /// A managed file is removed.
+    RemoveFile,
+    /// A new generation of a logical repository is published.
+    PublishGeneration,
+    /// A systemd unit is reset and started (`doctor --repair`).
+    RepairUnit,
+}
+
+/// One change of a plan, in its canonical form.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanChange {
+    pub kind: ChangeKind,
+    pub target: String,
+    pub before: Option<String>,
+    pub after: Option<String>,
+    /// The reason codes of the risks the administrator accepts with it.
+    pub risks: Vec<ReasonCode>,
+}
+
+/// What the server would do: a summary for people and the changes for
+/// clients. The digest covers both, with the action and its arguments.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Plan {
+    pub summary: String,
+    pub changes: Vec<PlanChange>,
+}
+
+/// Why the server will not plan an action (the request was well formed).
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ActionRefusal {
+    pub reason_code: Option<ReasonCode>,
+    pub message: String,
+}
+
+/// How a finished operation ended, for the client to show.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct OperationOutcome {
+    pub message: String,
+    pub reason_codes: Vec<ReasonCode>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -123,12 +238,32 @@ pub enum AdminRequest {
     Confirm(ConfirmRequest),
 }
 
-/// What the server reports about itself.
+/// One source as the status API shows it (`specifications/cli-api.md`).
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceStatus {
+    pub source_id: String,
+    pub url: String,
+    /// `forge_repository.state`.
+    pub state: String,
+    /// The trust floor; absent before the first admission.
+    pub trust_floor: Option<String>,
+    pub pinned_consent: bool,
+    pub last_verified_at: Option<String>,
+    /// The confirmed Attested signer, `<workflow>@<ref rule>`; without one
+    /// the source is admitted at Strict or Pinned only (ADR-036 point 1).
+    pub signer: Option<String>,
+    /// Names activated in this source now.
+    pub activated: Vec<String>,
+}
+
+/// What the server reports about itself and the sources it keeps.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct StatusReport {
     pub service_version: String,
     pub operations_running: u32,
+    pub sources: Vec<SourceStatus>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -146,6 +281,8 @@ pub struct OperationView {
     pub operation_id: String,
     pub action: AdminAction,
     pub state: OperationState,
+    /// Present once the operation finished.
+    pub outcome: Option<OperationOutcome>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -154,6 +291,7 @@ pub struct PlanView {
     pub action: AdminAction,
     pub plan_digest: String,
     pub summary: String,
+    pub changes: Vec<PlanChange>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -200,6 +338,8 @@ pub enum Response {
     Status(StatusReport),
     Operation(OperationView),
     Plan(PlanView),
+    /// The action is well formed but cannot be planned now.
+    Refused(ActionRefusal),
     Started(Started),
     Error(ErrorBody),
 }
@@ -339,14 +479,18 @@ pub fn encode<T: Serialize>(message: &T) -> String {
     Value::Object(object).to_string()
 }
 
-/// The digest that a confirmation must repeat: SHA-256 over the action and
-/// the exact plan text that was shown.
-pub fn plan_digest(action: AdminAction, summary: &str) -> String {
-    let mut bytes = Vec::with_capacity(summary.len() + 32);
-    bytes.extend_from_slice(action.as_str().as_bytes());
-    bytes.push(b'\n');
-    bytes.extend_from_slice(summary.as_bytes());
-    Sha256Digest::of(&bytes).to_hex()
+/// The digest that a confirmation must repeat: SHA-256 over the canonical
+/// JSON of the action with its arguments and the plan that was shown
+/// (ADR-029 point 8, ADR-033 point 5). Fields serialize in declaration
+/// order and the plan holds no map, so the same plan gives the same bytes.
+pub fn plan_digest(action: &AdminAction, plan: &Plan) -> String {
+    #[derive(Serialize)]
+    struct Canonical<'a> {
+        action: &'a AdminAction,
+        plan: &'a Plan,
+    }
+    let text = serde_json::to_string(&Canonical { action, plan }).unwrap_or_default();
+    Sha256Digest::of(text.as_bytes()).to_hex()
 }
 
 #[cfg(test)]

@@ -107,3 +107,7 @@ impl SocketInspector {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "remote_tests.rs"]
+mod tests;

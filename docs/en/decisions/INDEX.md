@@ -39,3 +39,4 @@ Each ADR contains its rationale, alternatives, consequences, and a reference to 
 - [ADR-033: Local API for clients other than the CLI (refines ADR-029)](ADR-033.md)
 - [ADR-034: Attestation evidence after R-003: stored bundles and lookup after a transfer (refines ADR-030)](ADR-034.md)
 - [ADR-035: Process layout: isolated signer and inspector, a lazy-fetch channel for the reader (refines ADR-017, ADR-029)](ADR-035.md)
+- [ADR-036: Source settings confirmed by the administrator: Attested signer, loopback port, family approval (refines ADR-024, ADR-030)](ADR-036.md)

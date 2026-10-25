@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# P4-001a test unit (ADR-035): the reader asks the state owner for a
+# package missing from the CAS. Only the reader's user may open it.
+
+[Unit]
+Description=Pakomichi lazy fetch socket (P4-001a test)
+
+[Socket]
+ListenStream=/run/pakomichi/fetch.sock
+SocketUser=pakomichi-reader
+SocketMode=0600
+FileDescriptorName=fetch
+Service=pakomichi-state.service
+
+[Install]
+WantedBy=sockets.target

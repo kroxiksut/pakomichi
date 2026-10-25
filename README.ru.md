@@ -80,10 +80,11 @@ sudo apt install netwatch
 
 ## Разработка
 
-Установите зафиксированный в `rust-toolchain.toml` Rust, Python 3, PowerShell (7 или Windows PowerShell 5.1) и `cargo-deny` 0.19.0. Запустите тот же quality gate, который выполняет CI:
+Установите зафиксированный в `rust-toolchain.toml` Rust, Python 3, PowerShell (7 или Windows PowerShell 5.1), `cargo-deny` 0.19.0 и `cargo-nextest` 0.9.149. Запустите тот же quality gate, который выполняет CI:
 
 ```powershell
 cargo install cargo-deny --version 0.19.0 --locked
+cargo install cargo-nextest --version 0.9.149 --locked
 ./scripts/quality.ps1
 ```
 

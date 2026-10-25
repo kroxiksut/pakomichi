@@ -130,6 +130,59 @@ pub struct ManagedFile {
     pub bytes: Vec<u8>,
 }
 
+/// Whether `path` is one Pakomichi may write or remove: the keyring, or
+/// the sources or preferences file of a valid source key. The applier runs
+/// as root and refuses any other path, wherever it comes from.
+pub fn is_managed_path(path: &str) -> bool {
+    if path == KEYRING_PATH {
+        return true;
+    }
+    let key = |directory: &str, suffix: &str| {
+        path.strip_prefix(directory)
+            .and_then(|rest| rest.strip_prefix("/pakomichi-"))
+            .and_then(|rest| rest.strip_suffix(suffix))
+            .is_some_and(|key| is_key(key, 64))
+    };
+    key(SOURCES_DIR, ".sources") || key(PREFERENCES_DIR, ".pref")
+}
+
+/// The configuration Pakomichi wants APT to have: every source, the
+/// loopback port, and the local keyring. The root applier renders the
+/// files from it itself.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Desired {
+    pub port: u16,
+    pub keyring: Vec<u8>,
+    pub sources: Vec<SourceConfig>,
+}
+
+impl Desired {
+    /// No source: it renders no file, so applying it removes all of
+    /// Pakomichi's files.
+    pub fn empty(port: u16) -> Self {
+        Self {
+            port,
+            keyring: Vec::new(),
+            sources: Vec::new(),
+        }
+    }
+
+    pub fn render(&self) -> Result<Vec<ManagedFile>, ConfigError> {
+        render(&self.sources, self.port, &self.keyring)
+    }
+
+    /// Every activated name.
+    pub fn activated(&self) -> Vec<String> {
+        let names: BTreeSet<&String> = self
+            .sources
+            .iter()
+            .flat_map(|source| &source.repositories)
+            .flat_map(|repository| &repository.activated)
+            .collect();
+        names.into_iter().cloned().collect()
+    }
+}
+
 pub fn sources_path(source_key: &str) -> String {
     format!("{SOURCES_DIR}/pakomichi-{source_key}.sources")
 }

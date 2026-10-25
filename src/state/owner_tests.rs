@@ -131,9 +131,10 @@ fn foreign_migration_records_are_refused() -> TestResult {
     let path = dir.join("state.db");
     {
         let owner = StateOwner::open(&path)?;
+        // A version past this build's last migration.
         owner.connection.execute(
-            "INSERT INTO schema_migrations (version, name) VALUES (3, 'not this build')",
-            [],
+            "INSERT INTO schema_migrations (version, name) VALUES (?1, 'not this build')",
+            [SCHEMA_VERSION + 1],
         )?;
     }
     assert!(matches!(

@@ -696,6 +696,8 @@ fn clause_text(ecosystem: Ecosystem, atoms: &[Atom]) -> String {
         .join(" | ")
 }
 
+#[cfg(target_os = "linux")]
+pub mod detect;
 pub mod policy;
 
 #[cfg(test)]

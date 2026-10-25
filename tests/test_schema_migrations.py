@@ -11,7 +11,16 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 INITIAL_MIGRATION = PROJECT_ROOT / "migrations" / "0001_initial.sql"
 OWNER_MIGRATION = PROJECT_ROOT / "migrations" / "0002_repository_owner_confirmation.sql"
-MIGRATIONS = (INITIAL_MIGRATION, OWNER_MIGRATION)
+ACTIVATION_MIGRATION = PROJECT_ROOT / "migrations" / "0003_name_activation.sql"
+SIGNER_MIGRATION = PROJECT_ROOT / "migrations" / "0004_attested_signer.sql"
+MEMBERSHIP_MIGRATION = PROJECT_ROOT / "migrations" / "0005_family_membership.sql"
+MIGRATIONS = (
+    INITIAL_MIGRATION,
+    OWNER_MIGRATION,
+    ACTIVATION_MIGRATION,
+    SIGNER_MIGRATION,
+    MEMBERSHIP_MIGRATION,
+)
 SCHEMA_VERSION = len(MIGRATIONS)
 ZERO_DIGEST = "0" * 64
 
@@ -142,6 +151,12 @@ def insert_row_in_every_table(connection: sqlite3.Connection) -> None:
         f"""
         INSERT INTO repository_previous_address(source_id, canonical_url, observed_at)
         VALUES ('source-1', 'https://example.invalid/old', '2026-10-18T00:00:00Z');
+        INSERT INTO name_activation(source_id, ecosystem, native_name, activated_at)
+        VALUES ('source-1', 'deb', 'example', '2026-10-18T00:00:00Z');
+        INSERT INTO attested_signer(source_id, workflow, signer_ref, confirmed_at)
+        VALUES ('source-1', '.github/workflows/release.yml', 'tag', '2026-10-18T00:00:00Z');
+        INSERT INTO family_outsider(family_id, ecosystem, native_name)
+        VALUES ('family-1', 'deb', 'example');
         INSERT INTO source_policy(
             id, source_id, family_id, ecosystem, native_name, allowed_channel,
             accepted_trust_modes_json, restrictions_json, updated_at
@@ -229,9 +244,12 @@ class InitialMigrationTests(unittest.TestCase):
             "admin_operation",
             "artifact",
             "artifact_cache",
+            "attested_signer",
             "decision_log",
+            "family_outsider",
             "forge_repository",
             "installed_observation",
+            "name_activation",
             "os_inventory",
             "package_family",
             "package_identity",
@@ -257,7 +275,13 @@ class InitialMigrationTests(unittest.TestCase):
             SCHEMA_VERSION, connection.execute("PRAGMA user_version").fetchone()[0]
         )
         self.assertEqual(
-            [(1, "initial"), (2, "repository_owner_confirmation")],
+            [
+                (1, "initial"),
+                (2, "repository_owner_confirmation"),
+                (3, "name_activation"),
+                (4, "attested_signer"),
+                (5, "family_membership"),
+            ],
             connection.execute(
                 "SELECT version, name FROM schema_migrations ORDER BY version"
             ).fetchall(),
@@ -588,7 +612,7 @@ class InitialMigrationTests(unittest.TestCase):
                         connection.execute(statement, (value,))
             checked_tables.add(table)
 
-        self.assertEqual(18, len(checked_tables))
+        self.assertEqual(21, len(checked_tables))
 
     def test_nullable_columns_accept_null(self) -> None:
         connection = migrated_database()
@@ -619,6 +643,7 @@ class InitialMigrationTests(unittest.TestCase):
                 "forge_repository.trust_floor",
                 "forge_repository.pinned_consent_at",
                 "installed_observation.reported_repository",
+                "name_activation.ended_at",
                 "release_record.commit_sha",
                 "snapshot.signature_sha256",
                 "source_policy.selected_native_source",
@@ -990,7 +1015,168 @@ class OwnerConfirmationTests(unittest.TestCase):
             ).fetchall(),
         )
         self.assertEqual(
+            2, connection.execute("PRAGMA user_version").fetchone()[0]
+        )
+
+
+class NameActivationTests(unittest.TestCase):
+    """Migration 0003: the activation journal (ADR-022 point 3)."""
+
+    def setUp(self) -> None:
+        self.connection = migrated_database()
+        insert_source(self.connection)
+        insert_source(self.connection, source_id="source-2", repository_id="1002")
+
+    def activate(self, source_id: str = "source-1", name: str = "sampleapp") -> None:
+        self.connection.execute(
+            "INSERT INTO name_activation(source_id, ecosystem, native_name, activated_at) "
+            "VALUES (?, 'deb', ?, '2026-10-24T00:00:00Z')",
+            (source_id, name),
+        )
+
+    def end(self, source_id: str = "source-1", name: str = "sampleapp") -> None:
+        self.connection.execute(
+            "UPDATE name_activation SET ended_at = '2026-10-25T00:00:00Z' "
+            "WHERE source_id = ? AND native_name = ? AND ended_at IS NULL",
+            (source_id, name),
+        )
+
+    def test_a_name_is_open_in_one_source_at_a_time(self) -> None:
+        # Two 990 pins for one name would let the higher version decide.
+        self.activate()
+        for source_id in ("source-1", "source-2"):
+            with self.assertRaises(sqlite3.IntegrityError, msg=source_id):
+                self.activate(source_id)
+        # The same name of the other ecosystem is another package.
+        self.connection.execute(
+            "INSERT INTO name_activation(source_id, ecosystem, native_name, activated_at) "
+            "VALUES ('source-2', 'rpm', 'sampleapp', '2026-10-24T00:00:00Z')"
+        )
+        self.end()
+        self.activate("source-2")
+        self.assertEqual(
+            [("source-1", 1), ("source-2", 0)],
+            self.connection.execute(
+                "SELECT source_id, ended_at IS NOT NULL FROM name_activation "
+                "WHERE ecosystem = 'deb' ORDER BY id"
+            ).fetchall(),
+        )
+
+    def test_an_activation_only_ends_once_and_is_never_rewritten(self) -> None:
+        self.activate()
+        for statement in (
+            "UPDATE name_activation SET source_id = 'source-2'",
+            "UPDATE name_activation SET native_name = 'other'",
+            "UPDATE name_activation SET activated_at = '2020-01-01T00:00:00Z'",
+            "DELETE FROM name_activation",
+            "DELETE FROM forge_repository WHERE id = 'source-1'",
+        ):
+            with self.assertRaises(sqlite3.IntegrityError, msg=statement):
+                self.connection.execute(statement)
+        self.end()
+        for statement in (
+            "UPDATE name_activation SET ended_at = NULL",
+            "UPDATE name_activation SET ended_at = '2027-01-01T00:00:00Z'",
+        ):
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "only ends, once", msg=statement):
+                self.connection.execute(statement)
+
+    def test_upgrading_from_0002_keeps_the_data(self) -> None:
+        connection = migrated_database(migrations=(INITIAL_MIGRATION, OWNER_MIGRATION))
+        insert_source(connection)
+        apply_migrations(connection, (ACTIVATION_MIGRATION,))
+        apply_migrations(connection, (ACTIVATION_MIGRATION,))
+        self.assertEqual(3, connection.execute("PRAGMA user_version").fetchone()[0])
+        self.assertEqual(
+            1, connection.execute("SELECT COUNT(*) FROM forge_repository").fetchone()[0]
+        )
+
+
+class AttestedSignerTests(unittest.TestCase):
+    """Migration 0004: the confirmed Attested signer (ADR-036 point 1)."""
+
+    def setUp(self) -> None:
+        self.connection = migrated_database()
+        insert_source(self.connection)
+
+    def confirm(self, workflow: str, signer_ref: str = "tag") -> None:
+        self.connection.execute(
+            "INSERT INTO attested_signer(source_id, workflow, signer_ref, confirmed_at) "
+            "VALUES ('source-1', ?, ?, '2026-10-24T00:00:00Z')",
+            (workflow, signer_ref),
+        )
+
+    def test_only_a_workflow_file_and_a_ref_rule_are_stored(self) -> None:
+        self.confirm(".github/workflows/release.yml")
+        self.confirm(".github/workflows/release.yaml", "refs/heads/main")
+        for workflow, signer_ref in (
+            (".github/workflows/", "tag"),
+            (".github/workflows/a/b.yml", "tag"),
+            (".github/workflows/release", "tag"),
+            ("release.yml", "tag"),
+            (".github/workflows/release.yml", "refs/tags/v1.0"),
+            (".github/workflows/release.yml", "refs/heads/"),
+            (".github/workflows/release.yml", "main"),
+        ):
+            with self.assertRaises(sqlite3.IntegrityError, msg=(workflow, signer_ref)):
+                self.confirm(workflow, signer_ref)
+
+    def test_a_confirmation_is_never_rewritten_or_removed(self) -> None:
+        # Rewriting the signer in place would hide who could sign before.
+        self.confirm(".github/workflows/release.yml")
+        for statement in (
+            "UPDATE attested_signer SET workflow = '.github/workflows/evil.yml'",
+            "UPDATE attested_signer SET signer_ref = 'refs/heads/dev'",
+            "DELETE FROM attested_signer",
+            "DELETE FROM forge_repository WHERE id = 'source-1'",
+        ):
+            with self.assertRaises(sqlite3.IntegrityError, msg=statement):
+                self.connection.execute(statement)
+
+    def test_upgrading_from_0003_keeps_the_data(self) -> None:
+        connection = migrated_database(migrations=MIGRATIONS[:3])
+        insert_source(connection)
+        apply_migrations(connection, (SIGNER_MIGRATION,))
+        apply_migrations(connection, (SIGNER_MIGRATION,))
+        self.assertEqual(4, connection.execute("PRAGMA user_version").fetchone()[0])
+        self.assertEqual(
+            0, connection.execute("SELECT COUNT(*) FROM attested_signer").fetchone()[0]
+        )
+
+
+class FamilyOutsiderTests(unittest.TestCase):
+    """Migration 0005: names outside the family (ADR-036 point 3)."""
+
+    def setUp(self) -> None:
+        self.connection = migrated_database()
+        insert_artifact_prerequisites(self.connection)
+
+    def test_only_a_known_name_can_be_marked_and_the_mark_goes_with_it(self) -> None:
+        # A mark for a name the family has no row for would point nowhere.
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.connection.execute(
+                "INSERT INTO family_outsider(family_id, ecosystem, native_name) "
+                "VALUES ('family-1', 'deb', 'unknown')"
+            )
+        self.connection.execute(
+            "INSERT INTO family_outsider(family_id, ecosystem, native_name) "
+            "VALUES ('family-1', 'deb', 'example')"
+        )
+        self.connection.execute("DELETE FROM package_identity WHERE native_name = 'example'")
+        self.assertEqual(
+            0, self.connection.execute("SELECT COUNT(*) FROM family_outsider").fetchone()[0]
+        )
+
+    def test_upgrading_from_0004_keeps_every_name_a_member(self) -> None:
+        connection = migrated_database(migrations=MIGRATIONS[:4])
+        insert_artifact_prerequisites(connection)
+        apply_migrations(connection, (MEMBERSHIP_MIGRATION,))
+        apply_migrations(connection, (MEMBERSHIP_MIGRATION,))
+        self.assertEqual(
             SCHEMA_VERSION, connection.execute("PRAGMA user_version").fetchone()[0]
+        )
+        self.assertEqual(
+            0, connection.execute("SELECT COUNT(*) FROM family_outsider").fetchone()[0]
         )
 
 

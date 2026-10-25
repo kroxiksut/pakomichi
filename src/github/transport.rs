@@ -73,7 +73,9 @@ fn is_safe_path(path: &str) -> bool {
         && !path.starts_with("//")
         && path
             .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || b"/-._~%?&=".contains(&byte))
+            // `:` only for `sha256:<hex>` subjects; the origin is fixed, and
+            // a path that starts with one `/` cannot name another host.
+            .all(|byte| byte.is_ascii_alphanumeric() || b"/-._~%?&=:".contains(&byte))
 }
 
 /// The response headers the client uses; every other header is dropped by

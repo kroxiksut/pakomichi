@@ -22,7 +22,7 @@ fn artifact() -> ArtifactFacts {
         asset_mutated: false,
         malformed: false,
         channel_unclear: false,
-        namespace: Some(NamespaceFacts {
+        namespace: Namespace::Known(NamespaceFacts {
             relation_conflict: false,
             own_name: OwnName::Free,
         }),
@@ -199,7 +199,7 @@ fn composition_holds_come_from_the_family_and_the_namespace() {
     );
 
     let mut facts = supplemental();
-    facts.artifact.namespace = None;
+    facts.artifact.namespace = Namespace::Unknown(ReasonCode::ESystemNamespaceUnknown);
     assert_decision(
         &facts,
         Outcome::Hold,
@@ -208,7 +208,7 @@ fn composition_holds_come_from_the_family_and_the_namespace() {
     );
 
     let mut facts = supplemental();
-    if let Some(namespace) = facts.artifact.namespace.as_mut() {
+    if let Some(namespace) = facts.artifact.namespace.known_mut() {
         namespace.relation_conflict = true;
     }
     // A name activated earlier keeps its publisher, but a Provides of a
@@ -225,7 +225,7 @@ fn composition_holds_come_from_the_family_and_the_namespace() {
 #[test]
 fn an_os_part_name_is_held_unless_this_source_had_it_first() {
     let mut facts = supplemental();
-    if let Some(namespace) = facts.artifact.namespace.as_mut() {
+    if let Some(namespace) = facts.artifact.namespace.known_mut() {
         namespace.own_name = OwnName::OsPart;
     }
     assert_decision(
@@ -241,7 +241,7 @@ fn an_os_part_name_is_held_unless_this_source_had_it_first() {
 #[test]
 fn a_name_the_distribution_or_another_source_provides_is_not_activated_in_supplemental() {
     let mut facts = supplemental();
-    if let Some(namespace) = facts.artifact.namespace.as_mut() {
+    if let Some(namespace) = facts.artifact.namespace.known_mut() {
         namespace.own_name = OwnName::NeedsMigration;
     }
     assert_decision(
@@ -371,7 +371,12 @@ fn every_fact_changes_the_digest() {
     variant(|facts| facts.source.native_selection_proven = true);
     variant(|facts| facts.artifact.sha256.replace_range(0..1, "9"));
     variant(|facts| facts.artifact.provided_elsewhere = true);
-    variant(|facts| facts.artifact.namespace = None);
+    variant(|facts| {
+        facts.artifact.namespace = Namespace::Unknown(ReasonCode::ESystemNamespaceUnknown)
+    });
+    variant(|facts| {
+        facts.artifact.namespace = Namespace::Unknown(ReasonCode::EPlatformUnsupported)
+    });
     variant(|facts| facts.artifact.evidence = Evidence::Strict);
     let mut all = variants.clone();
     all.push(base.digest());
@@ -387,10 +392,10 @@ fn every_fact_changes_the_digest() {
 #[test]
 fn facts_of_another_version_or_with_an_unknown_field_are_refused() {
     let json = supplemental().to_json();
-    let newer = json.replacen("\"schema_version\":1", "\"schema_version\":2", 1);
+    let newer = json.replacen("\"schema_version\":2", "\"schema_version\":3", 1);
     assert_eq!(
         Facts::from_json(&newer),
-        Err(FactsError::UnsupportedVersion(2))
+        Err(FactsError::UnsupportedVersion(3))
     );
     let extra = json.replacen("\"pinned\":false", "\"pinned\":false,\"trusted\":true", 1);
     assert!(matches!(
@@ -423,5 +428,43 @@ fn the_behaviour_table_matches_the_error_specification() {
             Behaviour::Hold
         };
         assert_eq!(behaviour(code), expected, "{code}: {behaviour_column}");
+    }
+}
+
+#[test]
+fn a_decision_logged_in_version_1_replays_as_it_was_decided()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Rows written before version 2 stay in the append-only log; replaying
+    // them must give the outcome they were written with.
+    for namespace in [true, false] {
+        let mut facts = supplemental();
+        if !namespace {
+            facts.artifact.namespace = Namespace::Unknown(ReasonCode::ESystemNamespaceUnknown);
+        }
+        let mut value: serde_json::Value = serde_json::from_str(&facts.to_json())?;
+        value["schema_version"] = 1.into();
+        let inner = value["artifact"]["namespace"]["known"].clone();
+        value["artifact"]["namespace"] = inner;
+        let replayed = Facts::from_json(&value.to_string())?;
+        assert_eq!(replayed, facts);
+        assert_eq!(decide(&replayed), decide(&facts));
+    }
+    Ok(())
+}
+
+#[test]
+fn an_unknown_namespace_holds_with_the_reason_of_its_collector() {
+    // An unsupported platform is not "missing metadata, run apt update".
+    for code in [
+        ReasonCode::ESystemNamespaceUnknown,
+        ReasonCode::EPlatformUnsupported,
+    ] {
+        let mut facts = supplemental();
+        facts.artifact.namespace = Namespace::Unknown(code);
+        let decision = decide(&facts);
+        assert_eq!(decision.outcome, Outcome::Hold);
+        assert_eq!(decision.rule, Rule::Composition);
+        assert_eq!(decision.reason, Some(code));
+        assert!(!decision.published);
     }
 }

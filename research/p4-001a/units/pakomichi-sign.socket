@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# P4-001a test unit (ADR-035): one signer instance per connection. Only
+# the state owner's user may open the socket; the instance checks the peer
+# again from SO_PEERCRED.
+
+[Unit]
+Description=Pakomichi metadata signer socket (P4-001a test)
+
+[Socket]
+ListenStream=/run/pakomichi/sign.sock
+SocketUser=pakomichi
+SocketMode=0600
+Accept=yes
+MaxConnections=4
+
+[Install]
+WantedBy=sockets.target

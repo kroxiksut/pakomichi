@@ -9,7 +9,7 @@ Pakomichi is in the pre-alpha scaffold stage; no product behavior has been imple
 
 Do not include private keys, tokens, personal-machine data, or real internal server addresses in a pull request. Run package-manager tests in a VM or container with isolated package state.
 
-Before submitting a source change, install Python 3 and `cargo-deny` 0.19.0, then run `./scripts/quality.ps1`. The script applies the repository's common secret-signature, formatting, lint, Rust and SQLite test, advisory, license, and source checks. The signature scan supplements review and proper secret handling; it does not prove that arbitrary credentials are absent.
+Before submitting a source change, install Python 3, `cargo-deny` 0.19.0, and `cargo-nextest` 0.9.149 (`cargo install cargo-nextest --version 0.9.149 --locked`), then run `./scripts/quality.ps1`. Without cargo-nextest the script warns and runs the tests through `cargo test`. The script applies the repository's common secret-signature, formatting, lint, Rust and SQLite test, advisory, license, and source checks. The signature scan supplements review and proper secret handling; it does not prove that arbitrary credentials are absent.
 
 ## Contribution licensing
 

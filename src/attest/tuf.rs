@@ -103,6 +103,9 @@ pub enum RootError {
         instance: TufInstance,
         detail: String,
     },
+    /// `ensure_crypto_provider` has not run: `sigstore-crypto` would panic
+    /// on the first signature check, so nothing is fetched or read.
+    ProviderMissing { instance: TufInstance },
 }
 
 impl RootError {
@@ -110,7 +113,8 @@ impl RootError {
         match self {
             Self::Stale { instance, .. }
             | Self::Unreachable { instance, .. }
-            | Self::Invalid { instance, .. } => *instance,
+            | Self::Invalid { instance, .. }
+            | Self::ProviderMissing { instance } => *instance,
         }
     }
 }
@@ -131,6 +135,11 @@ impl std::fmt::Display for RootError {
             Self::Invalid { instance, detail } => write!(
                 formatter,
                 "the {} TUF metadata did not verify: {detail}",
+                instance.as_str()
+            ),
+            Self::ProviderMissing { instance } => write!(
+                formatter,
+                "no cryptography provider installed; the {} TUF metadata cannot be verified",
                 instance.as_str()
             ),
         }
@@ -157,13 +166,17 @@ fn kind(error: &sigstore_tuf::Error) -> Kind {
 ///
 /// `online` is the repository over the network; `cache_dir` holds the
 /// verified metadata of this instance (created if absent). `now` decides
-/// expiry.
+/// expiry. Without the crypto provider it refuses before any fetch or cache
+/// access.
 pub async fn fetch_trusted_root(
     instance: TufInstance,
     online: impl Repository + 'static,
     cache_dir: &Path,
     now: jiff::Timestamp,
 ) -> Result<(Vec<u8>, RootSource), RootError> {
+    if sigstore_crypto::try_default_provider().is_none() {
+        return Err(RootError::ProviderMissing { instance });
+    }
     let invalid = |error: sigstore_tuf::Error| RootError::Invalid {
         instance,
         detail: error.to_string(),

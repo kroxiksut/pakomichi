@@ -2,7 +2,8 @@
 
 //! Messages of the channels added by ADR-035: `fetch.sock` (reader →
 //! state owner), `sign.sock` and `inspect.sock` (state owner → one signer
-//! or inspector instance). Same rules as the rest of the protocol
+//! or inspector instance); and of `apply.sock` (state owner → one root
+//! applier instance, ADR-029 point 2, P4-003a). Same rules as the rest of the protocol
 //! (ADR-029 point 5): `schema_version` 1 and `type`, unknown fields
 //! refused, no defaults, one request type per channel.
 
@@ -129,6 +130,105 @@ pub struct InspectRefusal {
 pub enum InspectResponse {
     Deb(DebInspected),
     Refused(InspectRefusal),
+    Error(ErrorBody),
+}
+
+/// One logical repository of a source and its activated names.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AptRepositoryWire {
+    pub label: String,
+    pub activated: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AptSourceWire {
+    pub source_key: String,
+    pub repositories: Vec<AptRepositoryWire>,
+}
+
+/// The desired APT configuration: the applier renders the files from it.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AptConfigWire {
+    pub port: u16,
+    /// The local keyring, lowercase hex.
+    pub keyring_hex: String,
+    pub sources: Vec<AptSourceWire>,
+}
+
+/// A managed file and the SHA-256 Pakomichi last wrote to it.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManagedDigestWire {
+    pub path: String,
+    pub sha256: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApplyApt {
+    /// The `admin_operation` row this apply belongs to (32 lowercase hex).
+    pub operation_id: String,
+    pub desired: AptConfigWire,
+    /// Restored when the apply fails.
+    pub previous: AptConfigWire,
+    /// What the state owner recorded: the digests the files should hold.
+    pub known: Vec<ManagedDigestWire>,
+}
+
+/// `apply.sock`: one request per applier instance.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ApplyRequest {
+    ApplyApt(ApplyApt),
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AppliedWire {
+    pub known: Vec<ManagedDigestWire>,
+    pub changed: Vec<String>,
+}
+
+/// An apply that did not leave the desired state.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct NotAppliedWire {
+    /// What the managed files hold now, as Pakomichi wrote them.
+    pub known: Vec<ManagedDigestWire>,
+    pub reason_code: String,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DriftWire {
+    pub path: String,
+    /// `changed` (our file has other bytes or is gone) or `foreign` (a file
+    /// Pakomichi did not write, or not a regular file).
+    pub kind: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DriftedWire {
+    pub drift: Vec<DriftWire>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ApplyResponse {
+    Applied(AppliedWire),
+    /// The previous configuration is in place again.
+    RolledBack(NotAppliedWire),
+    /// Files are not as Pakomichi left them; nothing was written.
+    Drifted(DriftedWire),
+    /// The request does not render; nothing was read or written.
+    Invalid(Refusal),
+    /// The restore failed too; `known` says what is on disk.
+    Failed(NotAppliedWire),
     Error(ErrorBody),
 }
 

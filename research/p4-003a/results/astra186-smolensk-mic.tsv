@@ -1,0 +1,4 @@
+B0-levels	INFO	maximum(smolensk) / mic: ACTIVE / service: Уровень конф.=0(Уровень_0), Уровень целостности=63(Высокий), Линейная целостность=(), Категории=0x0(Нет) Роли=() 
+B1-unit-applies	PASS	verified changed=3
+B2-level-0-is-security-context	PASS	answer {"known":[{"path":"/etc/apt/keyrings/pakomichi.gpg","sha256":"4550c9653511b5619c159f08a7c86cca9cec3570986ea64408f2efa6f2b48090"},{"path":"/etc/apt/preferences.d/pakomichi-sampleapp.pref","sha256":"efcd3b3f54c57e9e5ea32ab14cf7c3045383c0750a86ae0400bcb2074e404578"},{"path":"/etc/apt/sources.list.d/pakomichi-sampleapp.sources","sha256":"afc1b09d29d312e0d59e22586ffa27e52c62f9fb6485cd5d79342e60d3aad02d"}],"message":"Permission denied (os error 13)","reason_code":"E_SECURITY_CONTEXT","schema_version":1,"type":"rolled_back"}
+B3-unit-applies-after	PASS	verified changed=3; staging files: 0

@@ -1276,3 +1276,49 @@ async fn the_token_reaches_only_the_request_and_never_debug_output() -> TestResu
     }
     Ok(())
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn attestations_are_looked_up_by_repository_id_and_others_are_dropped()
+-> Result<(), Box<dyn Error>> {
+    // After a rename or transfer the name may belong to someone else; the
+    // lookup goes by ID. A listing that also returns another repository's
+    // attestation for the same bytes must not lend it to this source.
+    let fake = FakeTransport::default();
+    let subject = pakomichi::cas::Sha256Digest::of(b"package bytes");
+    let ours = json!({"mediaType": "application/vnd.dev.sigstore.bundle.v0.3+json", "n": 1});
+    let theirs = json!({"mediaType": "application/vnd.dev.sigstore.bundle.v0.3+json", "n": 2});
+    fake.push(response(
+        200,
+        &json!({"attestations": [
+            {"repository_id": 100, "bundle": ours, "bundle_url": "https://elsewhere.example/1"},
+            {"repository_id": 999, "bundle": theirs},
+            // Only at another host: not fetched, so no evidence.
+            {"repository_id": 100, "bundle": null, "bundle_url": "https://elsewhere.example/2"}
+        ]}),
+    ));
+    let bundles = client(&fake)
+        .attestation_bundles(RepositoryId::new(100)?, &subject)
+        .await?;
+    assert_eq!(bundles.len(), 1);
+    assert_eq!(serde_json::from_slice::<Value>(&bundles[0])?["n"], 1);
+    assert_eq!(
+        fake.paths(),
+        vec![format!(
+            "/repositories/100/attestations/sha256:{}?per_page=100",
+            subject.to_hex()
+        )]
+    );
+    // No attestation at all is an empty list, not an error.
+    fake.push(status_only(
+        404,
+        ResponseHeaders::default(),
+        "{\"message\":\"Not Found\"}",
+    ));
+    assert!(
+        client(&fake)
+            .attestation_bundles(RepositoryId::new(100)?, &subject)
+            .await?
+            .is_empty()
+    );
+    Ok(())
+}

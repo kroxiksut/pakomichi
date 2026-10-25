@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# P4-003a research tool: drives the state owner's side of an APT apply
+# (admin_operation + apply.sock) and sends raw frames for the negative
+# cases. Research tooling only. Built by research/p4-003a/build.sh.
+
+[package]
+name = "pakomichi-p4003a-call"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.94.1"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "p4003a-call"
+path = "src/main.rs"
+
+[workspace]
+resolver = "3"
+
+[dependencies]
+pakomichi = { path = "../../.." }
+serde_json = "=1.0.154"
+jiff = { version = "=0.2.38", default-features = false, features = ["std"] }
+
+[profile.release]
+debug = false
+strip = true
+
+[lints.rust]
+unsafe_code = "deny"

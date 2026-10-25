@@ -31,6 +31,7 @@
 mod bundle;
 mod provider;
 mod reason;
+mod signer;
 mod tuf;
 mod tuf_http;
 mod verifier;
@@ -38,15 +39,15 @@ mod verifier;
 pub use bundle::{MAX_BUNDLE_BYTES, MAX_BUNDLES, RELEASE_PREDICATE, SLSA_PROVENANCE_V1};
 pub use provider::{ProviderConflict, ensure_crypto_provider};
 pub use reason::{AttestationFailure, MissingEvidence, SubReason};
+pub use signer::{AttestedSigner, InvalidSignerRef, InvalidWorkflow, SignerRef};
 pub use tuf::{
     RefreshError, RootError, RootSource, TRUSTED_ROOT_TARGET, TufInstance, fetch_trusted_root,
     refresh_trusted_roots,
 };
 pub use tuf_http::{TUF_HOSTS, TufHttp, TufRepository};
 pub use verifier::{
-    AttestationVerifier, AttestedEvidence, ExpectedProvenance, GITHUB_ACTIONS_ISSUER,
-    InvalidWorkflow, RELEASE_SAN, SetupError, SourceRef, StrictEvidence, TrustedRoots,
-    VERIFIER_VERSION,
+    AttestationVerifier, AttestedEvidence, ExpectedProvenance, GITHUB_ACTIONS_ISSUER, RELEASE_SAN,
+    SetupError, SourceRef, StrictEvidence, TrustedRoots, VERIFIER_VERSION,
 };
 
 #[cfg(test)]

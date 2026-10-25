@@ -61,15 +61,25 @@ pub fn effective_uid() -> Result<u32, StartError> {
 
 /// An unprivileged role: refuses uid 0.
 pub fn require_unprivileged() -> Result<u32, StartError> {
-    match effective_uid()? {
+    unprivileged_role(effective_uid()?)
+}
+
+/// The applier's role: requires uid 0.
+pub fn require_root() -> Result<(), StartError> {
+    root_role(effective_uid()?)
+}
+
+/// The role checks as functions of the uid, so both answers are tested
+/// whatever user runs the tests.
+const fn unprivileged_role(uid: u32) -> Result<u32, StartError> {
+    match uid {
         0 => Err(StartError::Root),
         uid => Ok(uid),
     }
 }
 
-/// The applier's role: requires uid 0.
-pub fn require_root() -> Result<(), StartError> {
-    match effective_uid()? {
+const fn root_role(uid: u32) -> Result<(), StartError> {
+    match uid {
         0 => Ok(()),
         uid => Err(StartError::NotRoot { uid }),
     }
@@ -115,15 +125,27 @@ pub fn require_private_dir(path: &Path, uid: u32) -> Result<(), StartError> {
     Ok(())
 }
 
+/// The descriptors systemd passed, read once: `listenfd` clears
+/// `LISTEN_FDS` and `LISTEN_PID` when it reads them, so a second read would
+/// find none.
+fn inherited() -> &'static std::sync::Mutex<listenfd::ListenFd> {
+    static FDS: std::sync::OnceLock<std::sync::Mutex<listenfd::ListenFd>> =
+        std::sync::OnceLock::new();
+    FDS.get_or_init(|| std::sync::Mutex::new(listenfd::ListenFd::from_env()))
+}
+
 /// The Unix listener systemd passed under `name` (`FileDescriptorName=`,
 /// listed in `LISTEN_FDNAMES`). There is no fallback bind (ADR-029 point 1).
+/// Each listener is taken once.
 pub fn inherited_unix_listener(name: &str) -> Result<std::os::unix::net::UnixListener, StartError> {
     let names = std::env::var("LISTEN_FDNAMES").unwrap_or_default();
     let index = names
         .split(':')
         .position(|candidate| candidate == name)
         .ok_or_else(|| StartError::Unsafe(format!("no socket named {name} from systemd")))?;
-    listenfd::ListenFd::from_env()
+    inherited()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
         .take_unix_listener(index)?
         .ok_or_else(|| StartError::Unsafe(format!("socket {name} is not a Unix listener")))
 }

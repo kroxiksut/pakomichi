@@ -47,9 +47,38 @@ fn every_request_variant_has_a_pinned_wire_shape() -> TestResult {
         ),
         (
             AdminRequest::Plan(PlanRequest {
-                action: AdminAction::DoctorRepair,
+                action: AdminAction::DoctorRepair(Empty {}),
             }),
-            r#"{"action":"doctor_repair","schema_version":1,"type":"plan"}"#,
+            r#"{"action":{"kind":"doctor_repair"},"schema_version":1,"type":"plan"}"#,
+        ),
+        (
+            AdminRequest::Plan(PlanRequest {
+                action: AdminAction::SourceAdd(SourceAdd {
+                    url: "https://github.com/kroxiksut/pchi-test".to_owned(),
+                    observe: false,
+                    signer: Some(".github/workflows/release.yml@tag".to_owned()),
+                }),
+            }),
+            r#"{"action":{"kind":"source_add","observe":false,"signer":".github/workflows/release.yml@tag","url":"https://github.com/kroxiksut/pchi-test"},"schema_version":1,"type":"plan"}"#,
+        ),
+        (
+            AdminRequest::Plan(PlanRequest {
+                action: AdminAction::SourceActivate(SourceActivate {
+                    source_id: "source-1".to_owned(),
+                    packages: vec!["sampleapp".to_owned()],
+                    policy: ActivationPolicy::Supplemental,
+                }),
+            }),
+            r#"{"action":{"kind":"source_activate","packages":["sampleapp"],"policy":"supplemental","source_id":"source-1"},"schema_version":1,"type":"plan"}"#,
+        ),
+        (
+            AdminRequest::Plan(PlanRequest {
+                action: AdminAction::Sync(SyncTarget {
+                    source_id: None,
+                    force: false,
+                }),
+            }),
+            r#"{"action":{"force":false,"kind":"sync","source_id":null},"schema_version":1,"type":"plan"}"#,
         ),
         (
             AdminRequest::Confirm(ConfirmRequest {
@@ -71,27 +100,59 @@ fn every_response_variant_has_a_pinned_wire_shape() -> TestResult {
     let responses = [
         (Response::Pong(Empty {}), r#"{"schema_version":1,"type":"pong"}"#.to_owned()),
         (
-            Response::Status(StatusReport { service_version: "0.0.0".to_owned(), operations_running: 2 }),
-            r#"{"operations_running":2,"schema_version":1,"service_version":"0.0.0","type":"status"}"#.to_owned(),
+            Response::Status(StatusReport {
+                service_version: "0.0.0".to_owned(),
+                operations_running: 2,
+                sources: vec![SourceStatus {
+                    source_id: "github-1429109739".to_owned(),
+                    url: "https://github.com/kroxiksut/pchi-test".to_owned(),
+                    state: "active".to_owned(),
+                    trust_floor: Some("attested".to_owned()),
+                    pinned_consent: false,
+                    last_verified_at: None,
+                    signer: Some(".github/workflows/release.yml@tag".to_owned()),
+                    activated: vec!["sampleapp".to_owned()],
+                }],
+            }),
+            r#"{"operations_running":2,"schema_version":1,"service_version":"0.0.0","sources":[{"activated":["sampleapp"],"last_verified_at":null,"pinned_consent":false,"signer":".github/workflows/release.yml@tag","source_id":"github-1429109739","state":"active","trust_floor":"attested","url":"https://github.com/kroxiksut/pchi-test"}],"type":"status"}"#.to_owned(),
         ),
         (
             Response::Operation(OperationView {
                 operation_id: ID.to_owned(),
-                action: AdminAction::DoctorRepair,
-                state: OperationState::Running,
+                action: AdminAction::DoctorRepair(Empty {}),
+                state: OperationState::Failed,
+                outcome: Some(OperationOutcome {
+                    message: "socket still failed".to_owned(),
+                    reason_codes: vec![ReasonCode::EAdminApplyFailed],
+                }),
             }),
-            format!(r#"{{"action":"doctor_repair","operation_id":"{ID}","schema_version":1,"state":"running","type":"operation"}}"#),
+            format!(r#"{{"action":{{"kind":"doctor_repair"}},"operation_id":"{ID}","outcome":{{"message":"socket still failed","reason_codes":["E_ADMIN_APPLY_FAILED"]}},"schema_version":1,"state":"failed","type":"operation"}}"#),
         ),
         (
             Response::Plan(PlanView {
-                action: AdminAction::DoctorRepair,
+                action: AdminAction::DoctorRepair(Empty {}),
                 plan_digest: "cd".repeat(32),
                 summary: "reset-failed; start socket".to_owned(),
+                changes: vec![PlanChange {
+                    kind: ChangeKind::WriteFile,
+                    target: "/etc/apt/keyrings/pakomichi.gpg".to_owned(),
+                    before: None,
+                    after: Some("ef".repeat(32)),
+                    risks: vec![ReasonCode::ESourceAmbiguous],
+                }],
             }),
             format!(
-                r#"{{"action":"doctor_repair","plan_digest":"{}","schema_version":1,"summary":"reset-failed; start socket","type":"plan"}}"#,
+                r#"{{"action":{{"kind":"doctor_repair"}},"changes":[{{"after":"{}","before":null,"kind":"write_file","risks":["E_SOURCE_AMBIGUOUS"],"target":"/etc/apt/keyrings/pakomichi.gpg"}}],"plan_digest":"{}","schema_version":1,"summary":"reset-failed; start socket","type":"plan"}}"#,
+                "ef".repeat(32),
                 "cd".repeat(32)
             ),
+        ),
+        (
+            Response::Refused(ActionRefusal {
+                reason_code: Some(ReasonCode::ENameProvidedElsewhere),
+                message: "sampleapp is installed from another source".to_owned(),
+            }),
+            r#"{"message":"sampleapp is installed from another source","reason_code":"E_NAME_PROVIDED_ELSEWHERE","schema_version":1,"type":"refused"}"#.to_owned(),
         ),
         (
             Response::Started(Started { operation_id: ID.to_owned() }),
@@ -167,7 +228,7 @@ fn unknown_types_fields_and_values_are_refused() {
 
 #[test]
 fn administrative_requests_do_not_parse_on_the_status_channel() {
-    let plan = r#"{"action":"doctor_repair","schema_version":1,"type":"plan"}"#;
+    let plan = r#"{"action":{"kind":"doctor_repair"},"schema_version":1,"type":"plan"}"#;
     let confirm = format!(
         r#"{{"confirmed":true,"plan_digest":"{}","schema_version":1,"type":"confirm"}}"#,
         "ab".repeat(32)
@@ -240,14 +301,63 @@ fn operation_ids_are_exactly_32_lowercase_hex_digits() {
 
 #[test]
 fn the_plan_digest_binds_the_action_and_the_exact_text() {
-    let digest = plan_digest(AdminAction::DoctorRepair, "reset-failed; start socket");
+    let repair = AdminAction::DoctorRepair(Empty {});
+    let text = |summary: &str| Plan {
+        summary: summary.to_owned(),
+        changes: Vec::new(),
+    };
+    let digest = plan_digest(&repair, &text("reset-failed; start socket"));
     assert_eq!(digest.len(), 64);
     assert_eq!(
         digest,
-        plan_digest(AdminAction::DoctorRepair, "reset-failed; start socket")
+        plan_digest(&repair, &text("reset-failed; start socket"))
     );
     assert_ne!(
         digest,
-        plan_digest(AdminAction::DoctorRepair, "reset-failed; start socket ")
+        plan_digest(&repair, &text("reset-failed; start socket "))
     );
+}
+
+#[test]
+fn a_confirmation_binds_the_arguments_and_every_change_of_the_plan() {
+    // A plan shown for one package must not confirm another one, and a
+    // plan whose changes moved since it was shown is another plan.
+    let activate = |package: &str| {
+        AdminAction::SourceActivate(SourceActivate {
+            source_id: "source-1".to_owned(),
+            packages: vec![package.to_owned()],
+            policy: ActivationPolicy::Supplemental,
+        })
+    };
+    let plan = |after: &str| Plan {
+        summary: "activate".to_owned(),
+        changes: vec![PlanChange {
+            kind: ChangeKind::WriteFile,
+            target: "/etc/apt/preferences.d/pakomichi-sampleapp.pref".to_owned(),
+            before: None,
+            after: Some(after.to_owned()),
+            risks: Vec::new(),
+        }],
+    };
+    let shown = plan_digest(&activate("sampleapp"), &plan("aa"));
+    assert_eq!(shown, plan_digest(&activate("sampleapp"), &plan("aa")));
+    assert_ne!(shown, plan_digest(&activate("otherapp"), &plan("aa")));
+    assert_ne!(shown, plan_digest(&activate("sampleapp"), &plan("bb")));
+    let mut risky = plan("aa");
+    risky.changes[0].risks.push(ReasonCode::ESourceAmbiguous);
+    assert_ne!(shown, plan_digest(&activate("sampleapp"), &risky));
+}
+
+#[test]
+fn an_action_without_its_protection_field_is_refused() {
+    // `observe` and `force` have no default: a client that left them out
+    // is refused, never read as either value.
+    for text in [
+        r#"{"schema_version":1,"type":"plan","action":{"kind":"source_add","url":"https://github.com/o/r"}}"#,
+        r#"{"schema_version":1,"type":"plan","action":{"kind":"sync","source_id":null}}"#,
+        r#"{"schema_version":1,"type":"plan","action":{"kind":"source_activate","source_id":"s","packages":["a"]}}"#,
+        r#"{"schema_version":1,"type":"plan","action":{"kind":"source_add","url":"https://github.com/o/r","observe":false,"token":"x"}}"#,
+    ] {
+        assert!(decode::<AdminRequest>(text).is_err(), "{text}");
+    }
 }

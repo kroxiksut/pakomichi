@@ -80,10 +80,11 @@ The concept, Rust implementation language, and initial operational stack are agr
 
 ## Development
 
-Install the pinned Rust toolchain from `rust-toolchain.toml`, Python 3, PowerShell (7, or Windows PowerShell 5.1), and `cargo-deny` 0.19.0. Run the same quality gate used by CI:
+Install the pinned Rust toolchain from `rust-toolchain.toml`, Python 3, PowerShell (7, or Windows PowerShell 5.1), `cargo-deny` 0.19.0, and `cargo-nextest` 0.9.149. Run the same quality gate used by CI:
 
 ```powershell
 cargo install cargo-deny --version 0.19.0 --locked
+cargo install cargo-nextest --version 0.9.149 --locked
 ./scripts/quality.ps1
 ```
 

@@ -192,7 +192,7 @@ fn check_request(
     ))
 }
 
-fn respond(lookup: Lookup, head: bool, shown: &str) -> Response<ReplyBody> {
+pub(super) fn respond(lookup: Lookup, head: bool, shown: &str) -> Response<ReplyBody> {
     match lookup {
         Lookup::Found { object, .. } => {
             let size = object.size();

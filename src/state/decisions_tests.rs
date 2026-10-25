@@ -5,8 +5,8 @@ use std::error::Error;
 use super::*;
 use crate::error::ReasonCode;
 use crate::policy::{
-    ArtifactFacts, Evidence, Identity, NamespaceFacts, Outcome, OwnName, SourceFacts, SourceMode,
-    decide,
+    ArtifactFacts, Evidence, Identity, Namespace, NamespaceFacts, Outcome, OwnName, SourceFacts,
+    SourceMode, decide,
 };
 use crate::state::test_support::TempDir;
 
@@ -30,7 +30,7 @@ fn facts() -> Facts {
             asset_mutated: false,
             malformed: false,
             channel_unclear: false,
-            namespace: Some(NamespaceFacts {
+            namespace: Namespace::Known(NamespaceFacts {
                 relation_conflict: false,
                 own_name: OwnName::Free,
             }),

@@ -305,3 +305,41 @@ fn a_family_is_pinned_whole_or_not_at_all() {
     );
     assert!(held.is_empty());
 }
+
+#[test]
+fn only_a_copy_apt_lists_from_pakomichi_alone_counts_as_installed_from_it() {
+    let published: BTreeMap<String, BTreeSet<String>> = [
+        ("sampleapp", "1.0-1"),
+        ("sampleapp-helper", "1.0-1"),
+        ("sampleapp-doc", "1.0-1"),
+        ("sampleapp-tools", "1.0-1"),
+    ]
+    .into_iter()
+    .map(|(name, version)| (name.to_owned(), [version.to_owned()].into_iter().collect()))
+    .collect();
+    // The same version is also in the distribution: it may have come from
+    // there (APT 2.8+ lists the two apart).
+    let helper = format!(
+        "sampleapp-helper:\n  Installed: 1.0-1\n  Candidate: 1.0-1\n  Version table:\n\
+         \x20*** 1.0-1 990\n        100 {OURS}\n        100 /var/lib/dpkg/status\n\
+         \x20    1.0-1 500\n        500 {DISTRO}\n"
+    );
+    // Ours: the installed version comes only from our repository.
+    let text = format!(
+        "sampleapp:\n  Installed: 1.0-1\n  Candidate: 1.0-1\n  Version table:\n\
+         \x20*** 1.0-1 990\n        100 {OURS}\n        100 /var/lib/dpkg/status\n\
+         {helper}\
+         sampleapp-doc:\n  Installed: 1.0-1\n  Candidate: 1.0-1\n  Version table:\n\
+         \x20*** 1.0-1 100\n        100 /var/lib/dpkg/status\n\
+         sampleapp-tools:\n  Installed: 0.9-1\n  Candidate: 1.0-1\n  Version table:\n\
+         \x20    1.0-1 990\n        100 {OURS}\n\
+         \x20*** 0.9-1 100\n        100 /var/lib/dpkg/status\n\
+         otherapp:\n  Installed: 1.0-1\n  Candidate: 1.0-1\n  Version table:\n\
+         \x20*** 1.0-1 990\n        100 {OURS}\n        100 /var/lib/dpkg/status\n"
+    );
+    let found = installed_from_pakomichi(&parse(&text), &published, &ours());
+    // sampleapp-doc: no repository lists the installed version (installed
+    // from a file); sampleapp-tools: another version than ours is installed;
+    // otherapp: never published by Pakomichi.
+    assert_eq!(found, ["sampleapp".to_owned()].into_iter().collect());
+}

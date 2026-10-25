@@ -61,6 +61,27 @@ fn a_signature_by_another_key_is_refused_even_if_it_is_valid() -> TestResult {
 }
 
 #[test]
+fn a_second_signature_next_to_the_expected_one_is_refused() -> TestResult {
+    // Exactly one signature, by the expected key: a message that also
+    // carries another key's signature is not the message the signer made,
+    // whichever of the two gpgv reports first.
+    let original = TestKey::new("original")?;
+    let other = TestKey::new("other")?;
+    let both = original.also_holding(&other)?;
+    let message = original.sign_with(
+        RELEASE,
+        &["--local-user", other.fingerprint.as_str(), "--clearsign"],
+    )?;
+    let verifier = GpgvVerifier::new(&both, original.fingerprint.clone())?;
+    let result = verifier.verify_clearsigned(&message);
+    assert!(
+        matches!(&result, Err(SignError::UnexpectedSignature(text)) if text == "2 valid signatures"),
+        "{result:?}"
+    );
+    Ok(())
+}
+
+#[test]
 fn a_sha1_signature_is_refused() -> TestResult {
     // APT on Debian 13 verifies with sqv, which refuses SHA-1; gpgv still
     // accepts it, so the check has to.

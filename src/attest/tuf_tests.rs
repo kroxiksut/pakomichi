@@ -115,10 +115,15 @@ impl Drop for TempDir {
     }
 }
 
-fn runtime() -> std::io::Result<tokio::runtime::Runtime> {
-    tokio::runtime::Builder::new_current_thread()
+/// Sets the test process up the way a Pakomichi process starts: the crypto
+/// provider first (TUF verification panics without it), then the runtime.
+/// Relying on another test to install the provider holds only while every
+/// test shares one process; under nextest each test has its own.
+fn runtime() -> Result<tokio::runtime::Runtime, Box<dyn std::error::Error>> {
+    ensure_crypto_provider()?;
+    Ok(tokio::runtime::Builder::new_current_thread()
         .enable_all()
-        .build()
+        .build()?)
 }
 
 const V1: &str = include_str!("../../tests/data/attest/pchi-test-v0.1.0.jsonl");

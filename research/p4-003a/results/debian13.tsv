@@ -1,0 +1,17 @@
+A1-first-apply	PASS	verified changed=3; apt-cache policy exit 0
+A2-rendered-files	PASS	/etc/apt/sources.list.d/pakomichi-sampleapp.sources root 644;/etc/apt/preferences.d/pakomichi-sampleapp.pref root 644;/etc/apt/keyrings/pakomichi.gpg root 644;
+A3-apt-refuses-rollback	PASS	rolled_back E_ADMIN_APPLY_FAILED APT refuses the configuration: apt-cache failed: exit status: 100: E: Conflicting values set for option Signed-By regarding source http://127.0.0.1:18080/pakomichi-sampleapp-attested/ pakomichi-sampleapp-attested: /etc/apt/keyrings/pakomichi.gpg != /usr/share/keyrings/debian-archive-keyring.gpg | E: The list of sources could not be read.
+A4-update	PASS	verified changed=3
+A5-drift-not-overwritten	PASS	drifted changed:/etc/apt/sources.list.d/pakomichi-sampleapp.sources
+A5b-after-undo	PASS	verified changed=3
+A6-root-peer-refused	PASS	closed I/O error: Connection reset by peer (os error 104); journal refusals=1
+A7-other-user-cannot-connect	PASS	connect Permission denied (os error 13)
+A8-foreign-path-refused	PASS	answer {"message":"\"/etc/passwd\" is not a file Pakomichi manages","schema_version":1,"type":"invalid"}
+A9-unknown-field-refused	PASS	answer {"error":"malformed","message":"request refused; nothing was applied","schema_version":1,"supported_versions":[1],"type":"error"}
+A10-lost-answer-recovered	PASS	answer dropped (received); open=1 known=-; error an administrative operation is unfinished; recover it first; recovered 1 dbad5c7076b444f33ace76614ea1e158 reconciled
+A11-intent-only-recovered	PASS	recovered 1 ff8fba8f153ba2aa1b0dbf95decbe5d6 reconciled
+A12-applier-not-root-refused	PASS	event=fatal error=must run as root, runs as uid 995
+A13-root-socket-refused	PASS	event=fatal error=/run/p4003a-root.sock belongs to root; it must belong to the state owner's user
+A14-remove-all	PASS	verified changed=3
+A15-no-staging-left	PASS	staging files: 0
+A16-exposure	INFO	-> Overall exposure level for pakomichi-apply@x.service: 2.7 OK :-)

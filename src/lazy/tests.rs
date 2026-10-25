@@ -452,3 +452,62 @@ fn the_reader_gets_the_state_owners_status_over_the_fetch_channel() -> TestResul
     );
     Ok(())
 }
+
+#[test]
+fn a_stored_answer_for_another_object_is_not_taken_as_this_one() -> TestResult {
+    // The reader would serve "fetched" for a package that is still missing,
+    // and the client would get a 404 or other bytes instead of a 502.
+    use crate::ipc::channels::{FetchResponse, Stored};
+    use crate::ipc::oneshot::{FETCH_LIMITS, serve_channel};
+    use crate::ipc::server::PeerRule;
+    let dir = TempDir::new()?;
+    let object = ExpectedObject::new(Sha256Digest::of(PACKAGE), PACKAGE.len() as u64);
+    let path = dir.join("fetch.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&path)?;
+    serve_channel(
+        listener,
+        PeerRule::AnyUser,
+        FETCH_LIMITS,
+        |_request: crate::ipc::channels::FetchRequest, _uid| {
+            FetchResponse::Stored(Stored {
+                sha256: Sha256Digest::of(b"another package").to_hex(),
+            })
+        },
+    )?;
+    let result = FetchClient::new(&path, Duration::from_secs(5)).fetch(object);
+    assert_eq!(result.err().map(|error| error.http_status()), Some(500));
+    Ok(())
+}
+
+#[test]
+fn a_lost_generated_index_is_never_fetched_from_upstream() -> TestResult {
+    // Only a package has a pinned upstream asset; a missing InRelease is the
+    // publisher's fault. Fetching it would serve a release file that the
+    // publisher did not sign in this generation.
+    let (_background, handle) = Background::start()?;
+    let world = world()?;
+    let release = Sha256Digest::of(b"signed release");
+    fs::remove_file(world.cas.object_path(&release))?;
+    let (api, requests) = upstream(&handle, ok(b"signed release"))?;
+    let table = Table(BTreeMap::from([("api.github.com".to_owned(), vec![api])]));
+    let downloader = Arc::new(
+        AssetDownloader::with_resolver(Plain, table, DownloadConfig::default(), None)
+            .allowing_test_servers(vec![api], api.port()),
+    );
+    // Even with a pin for those bytes.
+    let pins = Pins(BTreeMap::from([(release, locator()?)]));
+    let fetcher = LazyFetcher::new(Arc::clone(&world.cas), downloader, pins, handle.clone());
+    let repositories = Repositories::open(&world.publish_root, &world.cas_root, DEFAULT_RETENTION)?
+        .with_fetcher(Arc::new(fetcher));
+    let lookup = repositories.lookup(
+        &format!("/{REPO}/dists/{REPO}/InRelease"),
+        SystemTime::now(),
+    );
+    assert!(matches!(lookup, Lookup::ObjectRefused(_)), "{lookup:?}");
+    assert_eq!(
+        requests.load(Ordering::SeqCst),
+        0,
+        "nothing was asked upstream"
+    );
+    Ok(())
+}
