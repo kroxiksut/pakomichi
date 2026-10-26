@@ -95,7 +95,168 @@ pub fn execute(command: &Command) -> u8 {
             }
             exit::OK
         }
+        Command::Doctor => {
+            let findings = super::doctor::diagnose(&doctor_facts());
+            print!("{}", super::doctor::render(&findings));
+            super::doctor::exit_status(&findings)
+        }
+        Command::DoctorRepair => repair(),
         Command::Admin(action) => administer(action),
+    }
+}
+
+/// What `pchi doctor` judges, read without root and without changing
+/// anything; a fact that cannot be read is reported as such.
+fn doctor_facts() -> super::doctor::Facts {
+    use super::doctor::{Facts, UNITS, UnitState, parse_unit};
+    let units = UNITS
+        .iter()
+        .map(|unit| {
+            let shown = std::process::Command::new("/usr/bin/systemctl")
+                .args([
+                    "show",
+                    "--property=LoadState,ActiveState,Result,Listen",
+                    "--",
+                    unit,
+                ])
+                .env("LC_ALL", "C")
+                .output();
+            match shown {
+                Ok(output) if output.status.success() => {
+                    parse_unit(unit, &String::from_utf8_lossy(&output.stdout))
+                }
+                Ok(output) => UnitState {
+                    unit: (*unit).to_owned(),
+                    load: format!("unknown (systemctl {})", output.status),
+                    ..UnitState::default()
+                },
+                Err(error) => UnitState {
+                    unit: (*unit).to_owned(),
+                    load: format!("unknown (systemctl: {error})"),
+                    ..UnitState::default()
+                },
+            }
+        })
+        .collect();
+    let unprivileged_port_start =
+        std::fs::read_to_string("/proc/sys/net/ipv4/ip_unprivileged_port_start")
+            .ok()
+            .and_then(|text| text.trim().parse().ok());
+    let status = match status_call(&StatusRequest::Status(Empty {})) {
+        Ok(Response::Status(report)) => Ok(report),
+        Ok(other) => Err(format!("unexpected answer: {}", encode(&other))),
+        Err(error) => Err(error),
+    };
+    #[cfg(target_os = "linux")]
+    let execution_policy = {
+        let ecosystem = if std::path::Path::new("/usr/bin/dpkg").exists() {
+            crate::inventory::Ecosystem::Deb
+        } else {
+            crate::inventory::Ecosystem::Rpm
+        };
+        crate::compat::detect::target(ecosystem)
+            .map(|target| target.execution_policy)
+            .map_err(|error| error.to_string())
+    };
+    #[cfg(not(target_os = "linux"))]
+    let execution_policy = Err("Pakomichi runs only on Linux".to_owned());
+    Facts {
+        units,
+        unprivileged_port_start,
+        status,
+        execution_policy,
+        now: jiff::Timestamp::now(),
+    }
+}
+
+/// `yes` typed at a terminal. Anything else, or no terminal, is a refusal,
+/// said on stderr.
+fn confirmed_at_terminal(prompt: &str) -> bool {
+    if !io::stdin().is_terminal() {
+        eprintln!("confirming needs an interactive terminal; nothing was changed");
+        return false;
+    }
+    print!("{prompt}");
+    let _ = io::stdout().flush();
+    let mut answer = String::new();
+    if io::stdin().lock().read_line(&mut answer).is_err() || answer.trim() != "yes" {
+        eprintln!("not confirmed; nothing was changed");
+        return false;
+    }
+    true
+}
+
+/// `pchi doctor --repair`: the documented recovery of failed units, run by
+/// the CLI itself as root (owner decision of 2026-10-25). The state owner is
+/// unprivileged and cannot call systemctl, and it may be the unit that is
+/// down. Diagnose → show the commands → `yes` at a terminal → run them in
+/// order, stop at the first failure → diagnose again.
+fn repair() -> u8 {
+    use super::doctor::{diagnose, render, render_repair, repair_plan, shell_line, unrepaired};
+    #[cfg(target_os = "linux")]
+    let uid = crate::process::effective_uid().map_err(|error| error.to_string());
+    #[cfg(not(target_os = "linux"))]
+    let uid: Result<u32, String> = Err("Pakomichi runs only on Linux".to_owned());
+    match uid {
+        Ok(0) => {}
+        Ok(_) => {
+            eprintln!("pchi doctor --repair needs root; nothing was changed");
+            return exit::FAILED;
+        }
+        Err(error) => {
+            eprintln!("the effective user is not known ({error}); nothing was changed");
+            return exit::FAILED;
+        }
+    }
+    let before = doctor_facts();
+    print!("{}", render(&diagnose(&before)));
+    let plan = repair_plan(&before);
+    print!("{}", render_repair(&plan));
+    if plan.is_empty() {
+        return exit::OK;
+    }
+    if !confirmed_at_terminal("Type yes to run these commands: ") {
+        return exit::NOT_CONFIRMED;
+    }
+    let mut status = exit::OK;
+    'units: for repair in &plan {
+        for arguments in &repair.commands {
+            let line = shell_line(arguments);
+            if let Err(error) = systemctl(arguments) {
+                eprintln!("{line} failed: {error}; the remaining commands were not run");
+                status = exit::FAILED;
+                break 'units;
+            }
+            println!("ran: {line}");
+        }
+    }
+    let after = doctor_facts();
+    println!("after the repair:");
+    print!("{}", render(&diagnose(&after)));
+    let left = unrepaired(&plan, &after);
+    if !left.is_empty() {
+        eprintln!("not repaired: {}", left.join(", "));
+        return exit::FAILED;
+    }
+    status
+}
+
+/// `/usr/bin/systemctl <arguments>` with its output captured.
+fn systemctl(arguments: &[String]) -> Result<(), String> {
+    let output = std::process::Command::new("/usr/bin/systemctl")
+        .args(arguments)
+        .env("LC_ALL", "C")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|error| error.to_string())?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "{}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
     }
 }
 
@@ -109,15 +270,7 @@ fn administer(action: &AdminAction) -> u8 {
         Err(error) => return unavailable(&error),
     };
     print!("{}", render_plan(&plan));
-    if !io::stdin().is_terminal() {
-        eprintln!("confirming needs an interactive terminal; nothing was changed");
-        return exit::NOT_CONFIRMED;
-    }
-    print!("Type yes to apply this plan: ");
-    let _ = io::stdout().flush();
-    let mut answer = String::new();
-    if io::stdin().lock().read_line(&mut answer).is_err() || answer.trim() != "yes" {
-        eprintln!("not confirmed; nothing was changed");
+    if !confirmed_at_terminal("Type yes to apply this plan: ") {
         return exit::NOT_CONFIRMED;
     }
     let operation = match admin_call(&AdminRequest::Confirm(ConfirmRequest {

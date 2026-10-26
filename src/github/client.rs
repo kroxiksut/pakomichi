@@ -4,17 +4,19 @@
 //! limits, and pagination over an abstract [`Transport`].
 //!
 //! Endpoints are limited to one repository: by name (only to pin or check
-//! an address), by repository ID, and its releases and tag references by
-//! repository ID. There
-//! is no search, fork, or owner listing endpoint and no HTML parsing
-//! (specification item 2).
+//! an address), by repository ID, and its releases, tag references, and
+//! attestations by repository ID. After a transfer, attestations are also
+//! looked up for one digest under a confirmed earlier owner, addressed by
+//! its account ID (ADR-034 point 2). There is no search, fork, or owner
+//! listing endpoint and no HTML parsing (specification item 2).
 
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use super::conditional::{CacheKey, CachedResponse, EtagCache, weak_match};
 use super::identity::{
-    IdentityOutcome, OwnerLogin, PinnedRepository, RepositoryId, RepositoryIdentity, RepositoryName,
+    IdentityOutcome, OwnerId, OwnerLogin, PinnedRepository, RepositoryId, RepositoryIdentity,
+    RepositoryName,
 };
 use super::pagination::{PaginationError, next_page, page_path};
 use super::rate_limit::{Clock, QuotaSnapshot, RateLimitGate, RateLimited, SystemClock};
@@ -22,9 +24,9 @@ use super::release_pin::GitObjectId;
 use super::token::{CredentialId, Token};
 use super::transport::{API_ORIGIN, ApiRequest, Transport, TransportError};
 use super::wire::{
-    self, AttestationBundle, MAX_RELEASES_PER_PAGE, MAX_RESPONSE_BYTES, Release, TagObjectKind,
-    TagRef, WireError, parse_attestations, parse_release, parse_release_page, parse_repository,
-    parse_tag_object, parse_tag_ref,
+    self, AccountKind, AttestationBundle, MAX_RELEASES_PER_PAGE, MAX_RESPONSE_BYTES, OwnerAccount,
+    Release, TagObjectKind, TagRef, WireError, parse_account, parse_attestations, parse_release,
+    parse_release_page, parse_repository, parse_tag_object, parse_tag_ref,
 };
 use crate::error::ReasonCode;
 
@@ -423,6 +425,89 @@ impl<T: Transport> GitHubClient<T> {
             "/repositories/{repository}/attestations/sha256:{}?per_page=100",
             subject.to_hex()
         );
+        self.bundles_of(path, repository).await
+    }
+
+    /// The account with this ID as it is now: `GET /user/{id}` answers for
+    /// users and organizations alike. Logins change, so a stored one is
+    /// never used to address an owner. `None` when the account is gone.
+    pub async fn owner_by_id(&self, owner: OwnerId) -> Result<Option<OwnerAccount>, GitHubError> {
+        let Some(fetched) =
+            not_found_as_none(self.fetch(format!("/user/{owner}"), parse_account).await)?
+        else {
+            return Ok(None);
+        };
+        if fetched.value.id != owner {
+            return Err(GitHubError::Wire(WireError::Invalid {
+                field: "id",
+                problem: "does not match the requested owner",
+            }));
+        }
+        Ok(Some(fetched.value))
+    }
+
+    /// The bundles an owner's account keeps for these bytes, made in the
+    /// pinned repository: after a transfer GitHub serves them only under the
+    /// previous owner (R-003 finding 6). The listing covers every repository
+    /// of the account, so a bundle of another repository is dropped. The
+    /// location adds no trust; the verifier checks every bundle in full.
+    pub async fn owner_attestation_bundles(
+        &self,
+        owner: &OwnerAccount,
+        repository: RepositoryId,
+        subject: &crate::cas::Sha256Digest,
+    ) -> Result<Vec<Vec<u8>>, GitHubError> {
+        let scope = match owner.kind {
+            AccountKind::User => "users",
+            AccountKind::Organization => "orgs",
+        };
+        let path = format!(
+            "/{scope}/{}/attestations/sha256:{}?per_page=100",
+            percent_encode(owner.login.as_str()),
+            subject.to_hex()
+        );
+        self.bundles_of(path, repository).await
+    }
+
+    /// ADR-034 point 2: the repository by ID first, then each earlier owner
+    /// in the given order (newest first), its login resolved by ID. Stops at
+    /// the first place that has bundles. Only the listed owner IDs are
+    /// queried, each once: at most one account and one attestation request
+    /// per owner. A deleted account is skipped; nothing found is an empty
+    /// list.
+    pub async fn attestation_bundles_after_transfer(
+        &self,
+        repository: RepositoryId,
+        subject: &crate::cas::Sha256Digest,
+        earlier_owner_ids: &[OwnerId],
+    ) -> Result<Vec<Vec<u8>>, GitHubError> {
+        let bundles = self.attestation_bundles(repository, subject).await?;
+        if !bundles.is_empty() {
+            return Ok(bundles);
+        }
+        for (index, &owner_id) in earlier_owner_ids.iter().enumerate() {
+            if earlier_owner_ids[..index].contains(&owner_id) {
+                continue;
+            }
+            let Some(owner) = self.owner_by_id(owner_id).await? else {
+                continue;
+            };
+            let bundles = self
+                .owner_attestation_bundles(&owner, repository, subject)
+                .await?;
+            if !bundles.is_empty() {
+                return Ok(bundles);
+            }
+        }
+        Ok(Vec::new())
+    }
+
+    /// One attestation listing, kept to bundles made in `repository`.
+    async fn bundles_of(
+        &self,
+        path: String,
+        repository: RepositoryId,
+    ) -> Result<Vec<Vec<u8>>, GitHubError> {
         let Some(listing) = not_found_as_none(self.fetch(path, parse_attestations).await)? else {
             return Ok(Vec::new());
         };

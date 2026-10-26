@@ -83,6 +83,10 @@ pub trait Service: Send + Sync + 'static {
     /// thread, so it must not wait for a running operation: serve a
     /// snapshot that operations refresh, not a query that takes their lock.
     fn sources(&self) -> Vec<SourceStatus>;
+    /// The loopback port the APT sources name, when the service knows it.
+    fn loopback_port(&self) -> Option<u16> {
+        None
+    }
 }
 
 struct Operation {
@@ -337,6 +341,7 @@ impl<S: Service> Shared<S> {
                 Response::Status(StatusReport {
                     service_version: env!("CARGO_PKG_VERSION").to_owned(),
                     operations_running: u32::try_from(running).unwrap_or(u32::MAX),
+                    loopback_port: self.service.loopback_port(),
                     sources: self.service.sources(),
                 })
             }

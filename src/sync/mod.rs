@@ -39,6 +39,7 @@ pub mod evidence;
 pub mod publish;
 #[cfg(target_os = "linux")]
 pub mod runner;
+pub mod selection;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -47,7 +48,7 @@ use tokio::runtime::Handle;
 
 pub use publish::{AptPublisher, apply_and_record, desired_apt};
 
-use crate::attest::AttestedSigner;
+use crate::attest::{AttestedSigner, SignerRef};
 use crate::cas::{ExpectedObject, Sha256Digest};
 use crate::compat::{SystemPackages, Target, assess};
 use crate::error::ReasonCode;
@@ -56,7 +57,8 @@ use crate::family::{
     admit_family,
 };
 use crate::github::{
-    AssetId, AssetLocator, GitHubClient, IdentityOutcome, PinnedRepository, Release, Transport,
+    AssetId, AssetLocator, GitHubClient, IdentityOutcome, OwnerId, PinnedRepository, Release,
+    Transport,
 };
 use crate::inspect::DebInspection;
 use crate::inventory::{
@@ -68,7 +70,8 @@ use crate::policy::level::{Level, LevelDecision, SourceLevel, Verified, decide_l
 use crate::policy::{Decision, Facts, Outcome, SourceMode, decide};
 use crate::publish::apt::AptPackage;
 use crate::state::{
-    ArtifactRow, ArtifactState, DecisionObject, EvidenceRow, ReleaseRow, StateError, StateOwner,
+    Accepted, ArtifactRow, ArtifactState, DecisionObject, EvidenceRow, RecordedEvidence,
+    ReleaseRow, StateError, StateOwner,
 };
 
 /// Fetches an asset into the CAS and returns the object stored: by its
@@ -115,7 +118,33 @@ pub struct EvidenceRecord {
     pub signer_identity: String,
     pub predicate_type: &'static str,
     pub bundle_sha256: Sha256Digest,
+    /// The verified bundle, byte for byte as received: it is kept so the
+    /// evidence can be verified again offline (ADR-034 point 1).
+    pub bundle: Vec<u8>,
     pub record_json: String,
+}
+
+/// Keeps verified attestation bundles in the blob store.
+pub trait BundleStore {
+    /// The stored bundle with this SHA-256; missing or changed bytes are an
+    /// error, never a bundle.
+    fn load(&self, sha256: Sha256Digest) -> Result<Vec<u8>, String>;
+    /// Stores `bundle` and returns its SHA-256.
+    fn store(&self, bundle: &[u8]) -> Result<Sha256Digest, String>;
+}
+
+/// Reads a stored bundle from `cas` and checks every byte of it.
+pub fn load_verified(cas: &crate::cas::Store, sha256: Sha256Digest) -> Result<Vec<u8>, String> {
+    let bytes = std::fs::read(cas.object_path(&sha256))
+        .map_err(|error| format!("bundle {}: {error}", sha256.to_hex()))?;
+    if Sha256Digest::of(&bytes) == sha256 {
+        Ok(bytes)
+    } else {
+        Err(format!(
+            "bundle {} changed in the blob store",
+            sha256.to_hex()
+        ))
+    }
 }
 
 /// What the evidence check found for one asset.
@@ -147,6 +176,21 @@ pub trait EvidenceCheck {
         asset_name: &str,
         sha256: Sha256Digest,
         signer: Option<&AttestedSigner>,
+        // The confirmed earlier owners of the repository, newest first:
+        // after a transfer GitHub serves the attestations made before it
+        // only under them (ADR-034 point 2).
+        earlier_owners: &[OwnerId],
+    ) -> Result<Checked, String>;
+    /// Verifies `bundles` kept when the evidence was recorded, as `check`
+    /// verifies what the forge sends (ADR-034 point 1).
+    fn reverify(
+        &self,
+        pinned: &PinnedRepository,
+        release: &Release,
+        asset_name: &str,
+        sha256: Sha256Digest,
+        signer: Option<&AttestedSigner>,
+        bundles: &[Vec<u8>],
     ) -> Result<Checked, String>;
 }
 
@@ -178,9 +222,13 @@ pub struct Sync<'a, T> {
     pub fetch: &'a dyn AssetFetch,
     pub inspect: &'a dyn PackageInspect,
     pub evidence: &'a dyn EvidenceCheck,
+    pub bundles: &'a dyn BundleStore,
     pub target: &'a Target,
     pub system: &'a SystemView,
     pub policy: InventoryPolicy,
+    /// `pchi sync --force`: ask the forge about every release's evidence,
+    /// whenever the last full check was (ADR-037 point 1).
+    pub force_full_evidence_check: bool,
 }
 
 /// Why a pass stopped. Nothing published before is withdrawn.
@@ -194,6 +242,8 @@ pub enum SyncError {
     },
     Inspector(String),
     Evidence(String),
+    /// A verified bundle could not be kept; its evidence is not recorded.
+    BundleStore(String),
     /// A defect of the pass itself, not of the release.
     Inventory(String),
     /// The target or the publication store could not be read.
@@ -214,9 +264,11 @@ impl SyncError {
             }
             Self::Publish { reason, .. } => Some(*reason),
             Self::Platform(_) => Some(ReasonCode::EPlatformUnsupported),
-            Self::UnknownSource(_) | Self::Inspector(_) | Self::Inventory(_) | Self::State(_) => {
-                None
-            }
+            Self::UnknownSource(_)
+            | Self::Inspector(_)
+            | Self::Inventory(_)
+            | Self::State(_)
+            | Self::BundleStore(_) => None,
         }
     }
 }
@@ -242,6 +294,7 @@ impl fmt::Display for SyncError {
                 reason.as_str()
             ),
             Self::State(error) => write!(formatter, "state: {error}"),
+            Self::BundleStore(detail) => write!(formatter, "bundle store: {detail}"),
         }
     }
 }
@@ -258,6 +311,8 @@ impl From<StateError> for SyncError {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArtifactReport {
     pub tag: String,
+    /// The forge's release ID, which `pchi release approve` takes.
+    pub release_id: u64,
     pub filename: String,
     /// `name version arch`, when the package was inspected.
     pub package: Option<String>,
@@ -316,6 +371,8 @@ struct Seen {
     asset_mutated: bool,
     checked: Option<Checked>,
     level: Option<LevelDecision>,
+    /// The recorded evidence these bytes keep instead of a new check.
+    reused_evidence: Option<String>,
 }
 
 impl Seen {
@@ -374,6 +431,15 @@ pub fn synchronize<T: Transport>(
     if identity.is_accepted() {
         owner.record_verified(source_id, at)?;
     }
+    // A rename keeps the IDs: the source follows it, and the old address
+    // stays known (ADR-005).
+    if let IdentityOutcome::Renamed {
+        previous_url,
+        current,
+    } = &identity
+    {
+        owner.record_rename(source_id, previous_url, &current.canonical_url(), at)?;
+    }
     let listing = sync
         .runtime
         .block_on(sync.github.list_releases(&pinned))
@@ -389,7 +455,11 @@ pub fn synchronize<T: Transport>(
         ..SyncReport::default()
     };
     let signer = owner.attested_signer(source_id)?;
+    let earlier_owners = earlier_owners(owner, source_id, pinned.owner_id())?;
     let recorded = owner.recorded_asset_digests(source_id)?;
+    let recorded_files = owner.recorded_release_file_digests(source_id)?;
+    let full_check = sync.force_full_evidence_check
+        || full_check_due(owner.last_full_evidence_check(source_id)?.as_deref(), at);
     let mut level_state = SourceLevel {
         floor: row.trust_floor.as_deref().and_then(Level::from_column),
         pinned_consent: row.pinned_consent,
@@ -428,9 +498,15 @@ pub fn synchronize<T: Transport>(
                     package: NativePackage::from_deb(inspection),
                 });
             }
+            // Other bytes behind a recorded asset ID, or under the name of
+            // a recorded file of this release (a replacement gets a new
+            // asset ID on GitHub), are a replaced asset (ADR-005).
             let asset_mutated = recorded
                 .get(&entry.asset_id.get())
-                .is_some_and(|digests| !digests.contains(&object.sha256));
+                .is_some_and(|digests| !digests.contains(&object.sha256))
+                || recorded_files
+                    .get(&(release.id.get(), entry.name.clone()))
+                    .is_some_and(|digests| !digests.contains(&object.sha256));
             seen.push(Seen {
                 release: index,
                 asset_id: entry.asset_id,
@@ -441,6 +517,7 @@ pub fn synchronize<T: Transport>(
                 asset_mutated,
                 checked: None,
                 level: None,
+                reused_evidence: None,
             });
         }
         if seen.len() == first {
@@ -474,16 +551,63 @@ pub fn synchronize<T: Transport>(
             if item.asset_mutated || item.admission != Admission::Eligible {
                 continue;
             }
-            let checked = sync
-                .evidence
-                .check(
-                    &pinned,
-                    release,
-                    &item.filename,
+            let reused = if full_check {
+                None
+            } else {
+                reusable_evidence(
+                    owner,
+                    source_id,
+                    item.asset_id.get(),
                     item.object.sha256,
                     signer.as_ref(),
-                )
-                .map_err(SyncError::Evidence)?;
+                    &release.tag,
+                )?
+            };
+            let checked = match &reused {
+                Some(evidence) => Checked {
+                    verified: match evidence.level {
+                        Level::Strict => Verified::Strict,
+                        _ => Verified::Attested,
+                    },
+                    record: None,
+                    note: "evidence verified before, reused".to_owned(),
+                },
+                None => sync
+                    .evidence
+                    .check(
+                        &pinned,
+                        release,
+                        &item.filename,
+                        item.object.sha256,
+                        signer.as_ref(),
+                        &earlier_owners,
+                    )
+                    .map_err(SyncError::Evidence)?,
+            };
+            item.reused_evidence = reused.map(|evidence| evidence.id);
+            // The forge no longer has evidence for bytes admitted before (a
+            // transfer, a deleted attestation): the bundle kept at admission
+            // is verified again offline (ADR-034 point 1).
+            let checked = if checked.verified == Verified::Nothing && item.reused_evidence.is_none()
+            {
+                match offline_evidence(
+                    sync,
+                    owner,
+                    source_id,
+                    &pinned,
+                    release,
+                    item,
+                    signer.as_ref(),
+                )? {
+                    Some((again, id)) => {
+                        item.reused_evidence = Some(id);
+                        again
+                    }
+                    None => checked,
+                }
+            } else {
+                checked
+            };
             let level = decide_level(
                 &level_state,
                 checked.verified,
@@ -721,9 +845,14 @@ pub fn synchronize<T: Transport>(
             (&item.inspection, release_rows.get(&item.release))
         {
             let control = inspection.control();
-            let evidence_id = match item.checked.as_ref().and_then(|c| c.record.as_ref()) {
-                Some(record) => Some(owner.record_evidence(
+            let recorded_now = item.checked.as_ref().and_then(|c| c.record.as_ref());
+            let evidence_id = match (&item.reused_evidence, recorded_now) {
+                (Some(id), _) => Some(id.clone()),
+                (None, Some(record)) => Some(record_with_bundle(
+                    owner,
+                    sync.bundles,
                     source_id,
+                    record,
                     &EvidenceRow {
                         level: record.level,
                         repository_id: pinned.repository_id().get(),
@@ -736,7 +865,7 @@ pub fn synchronize<T: Transport>(
                     },
                     at,
                 )?),
-                None => None,
+                (None, None) => None,
             };
             let (state, artifact_outcome) = artifact_outcome(
                 item,
@@ -744,7 +873,20 @@ pub fn synchronize<T: Transport>(
                 malformed.get(&index),
                 published_levels.get(&index),
             );
-            let state = if evidence_id.is_none()
+            // Admitted at Pinned: the approval of exactly these bytes
+            // stands in for evidence (ADR-027 point 8).
+            let approval_id = match (&evidence_id, item.level.as_ref()) {
+                (None, Some(level)) if level.served_at == Some(Level::Pinned) => {
+                    owner.approval_for(source_id, release_row, item.object.sha256)?
+                }
+                _ => None,
+            };
+            let accepted = match (&evidence_id, &approval_id) {
+                (Some(id), _) => Accepted::Evidence(id),
+                (None, Some(id)) => Accepted::Approval(id),
+                (None, None) => Accepted::Nothing,
+            };
+            let state = if accepted == Accepted::Nothing
                 && matches!(
                     state,
                     ArtifactState::Published | ArtifactState::Eligible | ArtifactState::Verified
@@ -753,7 +895,7 @@ pub fn synchronize<T: Transport>(
             } else {
                 state
             };
-            let artifact_id = owner.record_artifact(
+            let artifact_id = owner.record_accepted_artifact(
                 source_id,
                 &ArtifactRow {
                     release_row,
@@ -767,7 +909,7 @@ pub fn synchronize<T: Transport>(
                     sha256: item.object.sha256,
                     size: item.object.size,
                 },
-                evidence_id.as_deref(),
+                accepted,
                 state,
             )?;
             if let Some((facts, decision)) = decided.get(&index) {
@@ -783,12 +925,166 @@ pub fn synchronize<T: Transport>(
         }
         report.artifacts.push(ArtifactReport {
             tag: release.tag.clone(),
+            release_id: release.id.get(),
             filename: item.filename.clone(),
             package,
             outcome: outcome.unwrap_or_else(|| unrecorded_outcome(item)),
         });
     }
+    if full_check {
+        owner.record_full_evidence_check(source_id, at)?;
+    }
     Ok(report)
+}
+
+/// The recorded evidence of these bytes, verified again from its stored
+/// bundles, when it still verifies; `None` when there is none to verify or
+/// a stored bundle is missing or changed (it never passes, and the caller
+/// keeps the forge's answer, which holds the artifact).
+fn offline_evidence<T: Transport>(
+    sync: &Sync<'_, T>,
+    owner: &mut StateOwner,
+    source_id: &str,
+    pinned: &PinnedRepository,
+    release: &Release,
+    item: &Seen,
+    signer: Option<&AttestedSigner>,
+) -> Result<Option<(Checked, String)>, SyncError> {
+    let Some(recorded) =
+        owner.recorded_evidence(source_id, item.asset_id.get(), item.object.sha256)?
+    else {
+        return Ok(None);
+    };
+    let digests = owner.evidence_bundles(&recorded.id)?;
+    if digests.is_empty() {
+        return Ok(None);
+    }
+    let mut bundles = Vec::new();
+    for digest in digests {
+        match sync.bundles.load(digest) {
+            Ok(bundle) => bundles.push(bundle),
+            Err(_) => return Ok(None),
+        }
+    }
+    let again = sync
+        .evidence
+        .reverify(
+            pinned,
+            release,
+            &item.filename,
+            item.object.sha256,
+            signer,
+            &bundles,
+        )
+        .map_err(SyncError::Evidence)?;
+    Ok(
+        matches!(again.verified, Verified::Strict | Verified::Attested).then_some((
+            Checked {
+                note: format!("{} (from the stored bundle)", again.note),
+                record: None,
+                ..again
+            },
+            recorded.id,
+        )),
+    )
+}
+
+/// Records verified evidence with the bundle it was verified from: the
+/// bundle is stored first, so no evidence is ever recorded without the
+/// bytes that can verify it again offline (ADR-034 point 1).
+fn record_with_bundle(
+    owner: &mut StateOwner,
+    bundles: &dyn BundleStore,
+    source_id: &str,
+    record: &EvidenceRecord,
+    row: &EvidenceRow<'_>,
+    at: &str,
+) -> Result<String, SyncError> {
+    let stored = bundles
+        .store(&record.bundle)
+        .map_err(SyncError::BundleStore)?;
+    if stored != record.bundle_sha256 {
+        return Err(SyncError::BundleStore(format!(
+            "the stored bundle has digest {}, not the verified {}",
+            stored.to_hex(),
+            record.bundle_sha256.to_hex()
+        )));
+    }
+    let id = owner.record_evidence(source_id, row, at)?;
+    owner.record_evidence_bundles(source_id, &id, &[stored])?;
+    Ok(id)
+}
+
+/// The owners confirmed for `source_id` before `current`, newest first and
+/// each once (ADR-034 point 2). Only these are ever asked for attestations.
+fn earlier_owners(
+    owner: &mut StateOwner,
+    source_id: &str,
+    current: OwnerId,
+) -> Result<Vec<OwnerId>, StateError> {
+    let mut earlier: Vec<OwnerId> = Vec::new();
+    for confirmation in owner.owner_confirmations(source_id)?.into_iter().rev() {
+        let id = confirmation
+            .owner_id
+            .parse::<u64>()
+            .ok()
+            .and_then(|id| OwnerId::new(id).ok())
+            .ok_or(StateError::InvalidDatabase {
+                problem: "repository_owner_confirmation.owner_id is not a positive integer",
+            })?;
+        if id != current && !earlier.contains(&id) {
+            earlier.push(id);
+        }
+    }
+    Ok(earlier)
+}
+
+/// How long recorded evidence of the same bytes is reused before every
+/// release is asked about again (ADR-037 point 1).
+const FULL_CHECK_INTERVAL: jiff::SignedDuration = jiff::SignedDuration::from_hours(24);
+
+/// Whether the evidence of a source is due for a full check at `at`. An
+/// unreadable time, no check yet, or a last check in the future (a clock
+/// set back) are all due.
+fn full_check_due(last: Option<&str>, at: &str) -> bool {
+    let (Some(last), Ok(now)) = (last, at.parse::<jiff::Timestamp>()) else {
+        return true;
+    };
+    let Ok(last) = last.parse::<jiff::Timestamp>() else {
+        return true;
+    };
+    let elapsed = now.duration_since(last);
+    elapsed.is_negative() || elapsed >= FULL_CHECK_INTERVAL
+}
+
+/// The recorded evidence of exactly these bytes that may stand in for a new
+/// check: Strict, or Attested by the source's current signer with the ref
+/// its rule gives for this release.
+fn reusable_evidence(
+    owner: &mut StateOwner,
+    source_id: &str,
+    asset_id: u64,
+    sha256: Sha256Digest,
+    signer: Option<&AttestedSigner>,
+    tag: &str,
+) -> Result<Option<RecordedEvidence>, StateError> {
+    let Some(evidence) = owner.recorded_evidence(source_id, asset_id, sha256)? else {
+        return Ok(None);
+    };
+    let keep = match evidence.level {
+        Level::Strict => true,
+        Level::Attested => signer.is_some_and(|signer| {
+            let source_ref = match signer.source_ref() {
+                SignerRef::ReleaseTag => format!("refs/tags/{tag}"),
+                SignerRef::Branch(branch) => format!("refs/heads/{branch}"),
+            };
+            evidence
+                .signer_identity
+                .ends_with(&format!("/{}@{source_ref}", signer.workflow()))
+        }),
+        Level::Pinned => false,
+    };
+    Ok(keep.then_some(evidence))
 }
 
 /// The state an artifact is recorded in, and what the report says.
@@ -882,6 +1178,7 @@ fn report_unrecorded(seen: &[Seen], releases: &[Release], report: &mut SyncRepor
     for item in seen {
         report.artifacts.push(ArtifactReport {
             tag: releases[item.release].tag.clone(),
+            release_id: releases[item.release].id.get(),
             filename: item.filename.clone(),
             package: item.package(),
             outcome: unrecorded_outcome(item),

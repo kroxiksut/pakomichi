@@ -28,6 +28,11 @@
 //! no packages.
 
 pub mod apt;
+
+/// The maximum freshness of a generation in seconds: the last confirmed
+/// synchronization of a source may be this old before its metadata stops
+/// being served as current (`delivery-recovery.md`, `E_SOURCE_STALE`).
+pub const MAX_FRESHNESS_SECONDS: u64 = 7 * 24 * 60 * 60;
 #[cfg(unix)]
 mod apt_store;
 mod manifest;

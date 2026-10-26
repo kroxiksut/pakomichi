@@ -1,0 +1,11 @@
+key	value
+distribution	pakomichi-r003-oracle
+os	Fedora Linux 44 (Container Image)
+base_image	library/fedora:44 (research/r-001/images.lock.json fedora44)
+kernel	Linux 6.18.40.1-microsoft-standard-WSL2 x86_64
+python	Python 3.14.8
+gh	gh version 2.103.0 (2026-10-21)
+gh_tarball_sha256	fdd768eb70f6409f80fcfa9f3a1c0adf0fc98d827ab3ce0bed2ac22762c5d786
+github_auth	anonymous API collection; fine-grained read-only token (public repositories, no permissions) only for cases marked online
+run_stage	step4-transfer-back
+run_utc	20261025T142106Z

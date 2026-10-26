@@ -75,8 +75,6 @@ mod linux {
     /// The loopback port: privileged, so no unprivileged user can take it
     /// while the socket is down (N-034; owner decision of 2026-10-24).
     const DEFAULT_PORT: u16 = 879;
-    /// The maximum freshness of a generation (`delivery-recovery.md`).
-    const MAX_FRESHNESS: u64 = 7 * 24 * 60 * 60;
 
     fn now() -> String {
         jiff::Timestamp::now().to_string()
@@ -314,9 +312,11 @@ mod linux {
                     },
                     port: pipeline.port.unwrap_or(DEFAULT_PORT),
                     collector_home,
-                    max_freshness: MAX_FRESHNESS,
+                    max_freshness: pakomichi::publish::MAX_FRESHNESS_SECONDS,
                 };
-                service = service.with_pipeline(Box::new(production));
+                service = service
+                    .with_pipeline(Box::new(production))
+                    .map_err(|e| e.to_string())?;
             }
             let server = Server::new(service).map_err(|e| e.to_string())?;
             server

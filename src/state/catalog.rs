@@ -54,6 +54,16 @@ pub struct ReleaseRow<'a> {
     pub immutable: bool,
 }
 
+/// Evidence recorded before for the same bytes of the same asset.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecordedEvidence {
+    pub id: String,
+    pub level: Level,
+    /// The certificate identity: the release workflow of GitHub (Strict) or
+    /// `https://github.com/<owner>/<repo>/<workflow>@<ref>` (Attested).
+    pub signer_identity: String,
+}
+
 /// Verified provenance of one artifact's bytes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EvidenceRow<'a> {
@@ -356,6 +366,71 @@ impl StateOwner {
         Ok(id)
     }
 
+    /// The evidence recorded for exactly these bytes of this asset of
+    /// `source_id`, if an artifact still carries it (ADR-037 point 1).
+    pub fn recorded_evidence(
+        &mut self,
+        source_id: &str,
+        asset_id: u64,
+        sha256: Sha256Digest,
+    ) -> Result<Option<RecordedEvidence>, StateError> {
+        let row = self
+            .connection()
+            .query_row(
+                "SELECT e.id, e.evidence_type, e.signer_identity FROM artifact a \
+                 JOIN trust_evidence e ON e.id = a.evidence_id AND e.source_id = a.source_id \
+                 WHERE a.source_id = ?1 AND a.asset_id = ?2 AND a.sha256 = ?3 \
+                 AND a.state NOT IN ('rejected', 'revoked') ORDER BY e.verified_at LIMIT 1",
+                params![source_id, asset_id.to_string(), sha256.to_hex()],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .optional()?;
+        row.map(|(id, level, signer_identity)| {
+            Ok(RecordedEvidence {
+                id,
+                level: Level::from_column(&level)
+                    .ok_or_else(|| corrupt("unknown evidence type"))?,
+                signer_identity,
+            })
+        })
+        .transpose()
+    }
+
+    /// When the evidence of `source_id` was last checked in full.
+    pub fn last_full_evidence_check(
+        &mut self,
+        source_id: &str,
+    ) -> Result<Option<String>, StateError> {
+        Ok(self
+            .connection()
+            .query_row(
+                "SELECT checked_at FROM evidence_full_check WHERE source_id = ?1",
+                [source_id],
+                |row| row.get(0),
+            )
+            .optional()?)
+    }
+
+    /// Records a full evidence check of `source_id` at `at`.
+    pub fn record_full_evidence_check(
+        &mut self,
+        source_id: &str,
+        at: &str,
+    ) -> Result<(), StateError> {
+        self.connection().execute(
+            "INSERT INTO evidence_full_check (source_id, checked_at) VALUES (?1, ?2) \
+             ON CONFLICT (source_id) DO UPDATE SET checked_at = excluded.checked_at",
+            params![source_id, at],
+        )?;
+        Ok(())
+    }
+
     /// Records an artifact in `state`, or moves an existing one to it. The
     /// same asset with other bytes is another artifact (ADR-005).
     pub fn record_artifact(
@@ -365,32 +440,62 @@ impl StateOwner {
         evidence_id: Option<&str>,
         state: ArtifactState,
     ) -> Result<String, StateError> {
+        self.record_accepted_artifact(
+            source_id,
+            artifact,
+            evidence_id.map_or(Accepted::Nothing, Accepted::Evidence),
+            state,
+        )
+    }
+
+    /// [`Self::record_artifact`] with what accepted the bytes: evidence, or
+    /// an approval of a Pinned release (ADR-027), never both. What was
+    /// attached once stays.
+    pub fn record_accepted_artifact(
+        &mut self,
+        source_id: &str,
+        artifact: &ArtifactRow<'_>,
+        accepted: Accepted<'_>,
+        state: ArtifactState,
+    ) -> Result<String, StateError> {
+        let (evidence_id, approval_id) = match accepted {
+            Accepted::Evidence(id) => (Some(id), None),
+            Accepted::Approval(id) => (None, Some(id)),
+            Accepted::Nothing => (None, None),
+        };
         let id = format!(
             "artifact-{}-{}",
             artifact.asset_id,
             &artifact.sha256.to_hex()[..16]
         );
         let transaction = self.connection().transaction()?;
-        let existing: Option<(String, Option<String>)> = transaction
+        let existing: Option<(String, Option<String>, Option<String>)> = transaction
             .query_row(
-                "SELECT id, evidence_id FROM artifact WHERE source_id = ?1 AND release_id = ?2 \
-                 AND asset_id = ?3 AND sha256 = ?4",
+                "SELECT id, evidence_id, approval_id FROM artifact WHERE source_id = ?1 \
+                 AND release_id = ?2 AND asset_id = ?3 AND sha256 = ?4",
                 params![
                     source_id,
                     artifact.release_row,
                     artifact.asset_id.to_string(),
                     artifact.sha256.to_hex()
                 ],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .optional()?;
         let id = match existing {
-            Some((existing, stored)) => {
-                // Accepted evidence never changes; it may be attached once.
-                let evidence = stored.as_deref().or(evidence_id);
+            Some((existing, stored_evidence, stored_approval)) => {
+                // What accepted the bytes never changes; it may be attached
+                // once, and never next to the other kind.
+                let evidence = stored_evidence
+                    .as_deref()
+                    .or(evidence_id.filter(|_| stored_approval.is_none()));
+                let approval = stored_approval
+                    .as_deref()
+                    .or(approval_id.filter(|_| evidence.is_none()));
                 transaction.execute(
-                    "UPDATE artifact SET state = ?2, evidence_id = ?3 WHERE id = ?1",
-                    params![existing, state.as_str(), evidence],
+                    "UPDATE artifact SET state = ?2, evidence_id = ?3, approval_id = ?4 \
+                     WHERE id = ?1",
+                    params![existing, state.as_str(), evidence, approval],
                 )?;
                 existing
             }
@@ -398,8 +503,8 @@ impl StateOwner {
                 transaction.execute(
                     "INSERT INTO artifact (id, source_id, release_id, asset_id, family_id, \
                      ecosystem, native_name, native_version, architecture, filename, sha256, \
-                     byte_size, evidence_id, state) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                     byte_size, evidence_id, approval_id, state) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                     params![
                         id,
                         source_id,
@@ -414,6 +519,7 @@ impl StateOwner {
                         artifact.sha256.to_hex(),
                         i64::try_from(artifact.size).unwrap_or(i64::MAX),
                         evidence_id,
+                        approval_id,
                         state.as_str(),
                     ],
                 )?;
@@ -464,6 +570,123 @@ impl StateOwner {
         let rows = statement.query_map(params![source_id, release_row], |row| row.get(0))?;
         Ok(rows.collect::<Result<_, _>>()?)
     }
+
+    /// The recorded release of `source_id` with the forge's `release_id`,
+    /// as its row identifier and tag.
+    pub fn release_by_forge_id(
+        &mut self,
+        source_id: &str,
+        release_id: u64,
+    ) -> Result<Option<(String, String)>, StateError> {
+        Ok(self
+            .connection()
+            .query_row(
+                "SELECT id, tag FROM release_record WHERE source_id = ?1 AND forge_release_id = ?2",
+                params![source_id, release_id.to_string()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?)
+    }
+
+    /// The artifacts recorded for a release that may still be approved:
+    /// every one but the rejected and revoked, by file name.
+    pub fn release_artifacts(
+        &mut self,
+        source_id: &str,
+        release_row: &str,
+    ) -> Result<Vec<ReleaseArtifact>, StateError> {
+        let mut statement = self.connection().prepare(
+            "SELECT filename, native_name, native_version, sha256 FROM artifact \
+             WHERE source_id = ?1 AND release_id = ?2 AND state NOT IN ('rejected', 'revoked') \
+             ORDER BY filename, sha256",
+        )?;
+        let rows = statement.query_map(params![source_id, release_row], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?;
+        let mut artifacts = Vec::new();
+        for row in rows {
+            let (filename, name, version, sha256) = row?;
+            artifacts.push(ReleaseArtifact {
+                filename,
+                name,
+                version,
+                sha256: Sha256Digest::from_hex(&sha256).map_err(|_| corrupt("artifact digest"))?,
+            });
+        }
+        Ok(artifacts)
+    }
+
+    /// Approves exactly `digests` of a release (ADR-027 point 4.2). The
+    /// schema refuses it while the source has no Pinned consent; an
+    /// approval is never changed or removed.
+    pub fn approve_release(
+        &mut self,
+        source_id: &str,
+        release_row: &str,
+        digests: &[Sha256Digest],
+        at: &str,
+    ) -> Result<(), StateError> {
+        let transaction = self.connection().transaction()?;
+        for digest in digests {
+            let id = format!(
+                "approval-{}",
+                Sha256Digest::of(
+                    format!("{source_id}\n{release_row}\n{}", digest.to_hex()).as_bytes()
+                )
+                .to_hex()
+            );
+            transaction.execute(
+                "INSERT INTO release_approval (id, source_id, release_id, subject_sha256, \
+                 approved_at, record_json) VALUES (?1, ?2, ?3, ?4, ?5, '{}') \
+                 ON CONFLICT (id) DO NOTHING",
+                params![id, source_id, release_row, digest.to_hex(), at],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
+    /// The approval of exactly these bytes in this release, if any.
+    pub fn approval_for(
+        &mut self,
+        source_id: &str,
+        release_row: &str,
+        sha256: Sha256Digest,
+    ) -> Result<Option<String>, StateError> {
+        Ok(self
+            .connection()
+            .query_row(
+                "SELECT id FROM release_approval WHERE source_id = ?1 AND release_id = ?2 \
+                 AND subject_sha256 = ?3",
+                params![source_id, release_row, sha256.to_hex()],
+                |row| row.get(0),
+            )
+            .optional()?)
+    }
+}
+
+/// What accepted the bytes of an artifact.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Accepted<'a> {
+    /// Strict or Attested evidence (`trust_evidence.id`).
+    Evidence(&'a str),
+    /// The approval of a Pinned release (`release_approval.id`).
+    Approval(&'a str),
+    Nothing,
+}
+
+/// One artifact of a recorded release, as an approval shows it.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReleaseArtifact {
+    pub filename: String,
+    pub name: String,
+    pub version: String,
+    pub sha256: Sha256Digest,
 }
 
 #[cfg(test)]

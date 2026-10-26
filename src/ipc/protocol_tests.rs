@@ -47,12 +47,6 @@ fn every_request_variant_has_a_pinned_wire_shape() -> TestResult {
         ),
         (
             AdminRequest::Plan(PlanRequest {
-                action: AdminAction::DoctorRepair(Empty {}),
-            }),
-            r#"{"action":{"kind":"doctor_repair"},"schema_version":1,"type":"plan"}"#,
-        ),
-        (
-            AdminRequest::Plan(PlanRequest {
                 action: AdminAction::SourceAdd(SourceAdd {
                     url: "https://github.com/kroxiksut/pchi-test".to_owned(),
                     observe: false,
@@ -70,6 +64,23 @@ fn every_request_variant_has_a_pinned_wire_shape() -> TestResult {
                 }),
             }),
             r#"{"action":{"kind":"source_activate","packages":["sampleapp"],"policy":"supplemental","source_id":"source-1"},"schema_version":1,"type":"plan"}"#,
+        ),
+        (
+            AdminRequest::Plan(PlanRequest {
+                action: AdminAction::SourceAllowPinned(SourceAllowPinned {
+                    source_id: "source-1".to_owned(),
+                }),
+            }),
+            r#"{"action":{"kind":"source_allow_pinned","source_id":"source-1"},"schema_version":1,"type":"plan"}"#,
+        ),
+        (
+            AdminRequest::Plan(PlanRequest {
+                action: AdminAction::ReleaseApprove(ReleaseApprove {
+                    source_id: "source-1".to_owned(),
+                    release_id: 268_800_123,
+                }),
+            }),
+            r#"{"action":{"kind":"release_approve","release_id":268800123,"source_id":"source-1"},"schema_version":1,"type":"plan"}"#,
         ),
         (
             AdminRequest::Plan(PlanRequest {
@@ -103,6 +114,7 @@ fn every_response_variant_has_a_pinned_wire_shape() -> TestResult {
             Response::Status(StatusReport {
                 service_version: "0.0.0".to_owned(),
                 operations_running: 2,
+                loopback_port: Some(879),
                 sources: vec![SourceStatus {
                     source_id: "github-1429109739".to_owned(),
                     url: "https://github.com/kroxiksut/pchi-test".to_owned(),
@@ -112,27 +124,44 @@ fn every_response_variant_has_a_pinned_wire_shape() -> TestResult {
                     last_verified_at: None,
                     signer: Some(".github/workflows/release.yml@tag".to_owned()),
                     activated: vec!["sampleapp".to_owned()],
+                    updates_elsewhere: vec![UpdateElsewhere {
+                        name: "sampleapp".to_owned(),
+                        version: "1.1-1".to_owned(),
+                        offered_by: "http://deb.debian.org/debian-security bookworm-security/main"
+                            .to_owned(),
+                    }],
+                    apt_problems: vec![AptProblem {
+                        name: Some("sampleapp-data".to_owned()),
+                        reason_code: Some(ReasonCode::ESourceAmbiguous),
+                        message: "same version elsewhere".to_owned(),
+                    }],
                 }],
             }),
-            r#"{"operations_running":2,"schema_version":1,"service_version":"0.0.0","sources":[{"activated":["sampleapp"],"last_verified_at":null,"pinned_consent":false,"signer":".github/workflows/release.yml@tag","source_id":"github-1429109739","state":"active","trust_floor":"attested","url":"https://github.com/kroxiksut/pchi-test"}],"type":"status"}"#.to_owned(),
+            r#"{"loopback_port":879,"operations_running":2,"schema_version":1,"service_version":"0.0.0","sources":[{"activated":["sampleapp"],"apt_problems":[{"message":"same version elsewhere","name":"sampleapp-data","reason_code":"E_SOURCE_AMBIGUOUS"}],"last_verified_at":null,"pinned_consent":false,"signer":".github/workflows/release.yml@tag","source_id":"github-1429109739","state":"active","trust_floor":"attested","updates_elsewhere":[{"name":"sampleapp","offered_by":"http://deb.debian.org/debian-security bookworm-security/main","version":"1.1-1"}],"url":"https://github.com/kroxiksut/pchi-test"}],"type":"status"}"#.to_owned(),
         ),
         (
             Response::Operation(OperationView {
                 operation_id: ID.to_owned(),
-                action: AdminAction::DoctorRepair(Empty {}),
+                action: AdminAction::Sync(SyncTarget {
+                    source_id: None,
+                    force: false,
+                }),
                 state: OperationState::Failed,
                 outcome: Some(OperationOutcome {
-                    message: "socket still failed".to_owned(),
+                    message: "sync failed".to_owned(),
                     reason_codes: vec![ReasonCode::EAdminApplyFailed],
                 }),
             }),
-            format!(r#"{{"action":{{"kind":"doctor_repair"}},"operation_id":"{ID}","outcome":{{"message":"socket still failed","reason_codes":["E_ADMIN_APPLY_FAILED"]}},"schema_version":1,"state":"failed","type":"operation"}}"#),
+            format!(r#"{{"action":{{"force":false,"kind":"sync","source_id":null}},"operation_id":"{ID}","outcome":{{"message":"sync failed","reason_codes":["E_ADMIN_APPLY_FAILED"]}},"schema_version":1,"state":"failed","type":"operation"}}"#),
         ),
         (
             Response::Plan(PlanView {
-                action: AdminAction::DoctorRepair(Empty {}),
+                action: AdminAction::Sync(SyncTarget {
+                    source_id: None,
+                    force: false,
+                }),
                 plan_digest: "cd".repeat(32),
-                summary: "reset-failed; start socket".to_owned(),
+                summary: "synchronize 1 source".to_owned(),
                 changes: vec![PlanChange {
                     kind: ChangeKind::WriteFile,
                     target: "/etc/apt/keyrings/pakomichi.gpg".to_owned(),
@@ -142,7 +171,7 @@ fn every_response_variant_has_a_pinned_wire_shape() -> TestResult {
                 }],
             }),
             format!(
-                r#"{{"action":{{"kind":"doctor_repair"}},"changes":[{{"after":"{}","before":null,"kind":"write_file","risks":["E_SOURCE_AMBIGUOUS"],"target":"/etc/apt/keyrings/pakomichi.gpg"}}],"plan_digest":"{}","schema_version":1,"summary":"reset-failed; start socket","type":"plan"}}"#,
+                r#"{{"action":{{"force":false,"kind":"sync","source_id":null}},"changes":[{{"after":"{}","before":null,"kind":"write_file","risks":["E_SOURCE_AMBIGUOUS"],"target":"/etc/apt/keyrings/pakomichi.gpg"}}],"plan_digest":"{}","schema_version":1,"summary":"synchronize 1 source","type":"plan"}}"#,
                 "ef".repeat(32),
                 "cd".repeat(32)
             ),
@@ -228,7 +257,7 @@ fn unknown_types_fields_and_values_are_refused() {
 
 #[test]
 fn administrative_requests_do_not_parse_on_the_status_channel() {
-    let plan = r#"{"action":{"kind":"doctor_repair"},"schema_version":1,"type":"plan"}"#;
+    let plan = r#"{"action":{"force":false,"kind":"sync","source_id":null},"schema_version":1,"type":"plan"}"#;
     let confirm = format!(
         r#"{{"confirmed":true,"plan_digest":"{}","schema_version":1,"type":"confirm"}}"#,
         "ab".repeat(32)
@@ -240,6 +269,15 @@ fn administrative_requests_do_not_parse_on_the_status_channel() {
     );
     assert!(decode::<AdminRequest>(plan).is_ok());
     assert!(decode::<AdminRequest>(&confirm).is_ok());
+}
+
+#[test]
+fn n029_socket_recovery_is_no_request_of_any_channel() {
+    // `pchi doctor --repair` runs as root in the CLI (owner decision of
+    // 2026-10-25): the unprivileged state owner never plans or runs it.
+    let plan = r#"{"action":{"kind":"doctor_repair"},"schema_version":1,"type":"plan"}"#;
+    assert_eq!(decode::<AdminRequest>(plan), Err(ProtocolError::Malformed));
+    assert_eq!(decode::<StatusRequest>(plan), Err(ProtocolError::Malformed));
 }
 
 #[test]
@@ -301,21 +339,18 @@ fn operation_ids_are_exactly_32_lowercase_hex_digits() {
 
 #[test]
 fn the_plan_digest_binds_the_action_and_the_exact_text() {
-    let repair = AdminAction::DoctorRepair(Empty {});
+    let sync = AdminAction::Sync(SyncTarget {
+        source_id: None,
+        force: false,
+    });
     let text = |summary: &str| Plan {
         summary: summary.to_owned(),
         changes: Vec::new(),
     };
-    let digest = plan_digest(&repair, &text("reset-failed; start socket"));
+    let digest = plan_digest(&sync, &text("synchronize 1 source"));
     assert_eq!(digest.len(), 64);
-    assert_eq!(
-        digest,
-        plan_digest(&repair, &text("reset-failed; start socket"))
-    );
-    assert_ne!(
-        digest,
-        plan_digest(&repair, &text("reset-failed; start socket "))
-    );
+    assert_eq!(digest, plan_digest(&sync, &text("synchronize 1 source")));
+    assert_ne!(digest, plan_digest(&sync, &text("synchronize 1 source ")));
 }
 
 #[test]

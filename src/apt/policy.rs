@@ -195,6 +195,15 @@ pub enum Finding {
 }
 
 impl Finding {
+    /// The package the finding is about.
+    pub fn name(&self) -> &str {
+        match self {
+            Self::NotProtected { name, .. }
+            | Self::EqualVersionElsewhere { name, .. }
+            | Self::TakesOver { name, .. } => name,
+        }
+    }
+
     pub const fn reason(&self) -> ReasonCode {
         match self {
             Self::EqualVersionElsewhere { .. } => ReasonCode::ESourceAmbiguous,

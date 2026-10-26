@@ -9,9 +9,11 @@ progress), runs research/p2-008b/target.sh, and unregisters the distribution
 afterwards. Raw output: .research-local\p2-008b\runs\<Target>.
 #>
 param(
-    [Parameter(Mandatory = $true)][ValidateSet('debian12', 'alma9', 'fedora44')][string]$Target,
-    # A vendor repository as another source (debian12 only).
-    [ValidateSet('', 'pgdg')][string]$Vendor = ''
+    [Parameter(Mandatory = $true)][ValidateSet('debian12', 'debian13', 'ubuntu2404', 'alma9', 'fedora44')][string]$Target,
+    # Another source: a vendor repository (pgdg, debian12 only), or a copy
+    # of the distribution's own archive signed by an unowned copy of its
+    # keyring, which must not count as the distribution (copy, APT targets).
+    [ValidateSet('', 'pgdg', 'copy')][string]$Vendor = ''
 )
 
 $ErrorActionPreference = 'Continue'

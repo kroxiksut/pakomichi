@@ -1322,3 +1322,258 @@ async fn attestations_are_looked_up_by_repository_id_and_others_are_dropped()
     );
     Ok(())
 }
+
+// ------------------------------------------- attestations after a transfer
+
+fn not_found() -> ApiResponse {
+    status_only(
+        404,
+        ResponseHeaders::default(),
+        r#"{"message":"Not Found"}"#,
+    )
+}
+
+/// `GET /user/{id}` as GitHub returns it, extra fields included.
+fn account(id: u64, login: &str, kind: &str) -> ApiResponse {
+    response(
+        200,
+        &json!({
+            "login": login,
+            "id": id,
+            "node_id": "U_kgDOsynthetic",
+            "type": kind,
+            "site_admin": false,
+            "name": "Synthetic account",
+            "public_repos": 4
+        }),
+    )
+}
+
+fn attestations(entries: &[(u64, u64)]) -> ApiResponse {
+    let listed: Vec<Value> = entries
+        .iter()
+        .map(|(repository_id, n)| {
+            json!({
+                "repository_id": repository_id,
+                "bundle": {"mediaType": "application/vnd.dev.sigstore.bundle.v0.3+json", "n": n}
+            })
+        })
+        .collect();
+    response(200, &json!({"attestations": listed}))
+}
+
+fn bundle_numbers(bundles: &[Vec<u8>]) -> Result<Vec<u64>, Box<dyn Error>> {
+    bundles
+        .iter()
+        .map(|bytes| {
+            serde_json::from_slice::<Value>(bytes)?["n"]
+                .as_u64()
+                .ok_or_else(|| "bundle without n".into())
+        })
+        .collect()
+}
+
+fn subject() -> pakomichi::cas::Sha256Digest {
+    pakomichi::cas::Sha256Digest::of(b"package bytes")
+}
+
+fn repository_attestations_path() -> String {
+    format!(
+        "/repositories/100/attestations/sha256:{}?per_page=100",
+        subject().to_hex()
+    )
+}
+
+fn owner_attestations_path(scope: &str, login: &str) -> String {
+    format!(
+        "/{scope}/{login}/attestations/sha256:{}?per_page=100",
+        subject().to_hex()
+    )
+}
+
+fn owners(ids: &[u64]) -> Result<Vec<OwnerId>, Box<dyn Error>> {
+    Ok(ids
+        .iter()
+        .map(|id| OwnerId::new(*id))
+        .collect::<Result<_, _>>()?)
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn after_a_transfer_bundles_are_found_under_the_earlier_owner() -> TestResult {
+    // R-003 finding 6: the repository endpoint answers 404 after the
+    // transfer while the previous owner still serves the bundles.
+    let fake = FakeTransport::default();
+    fake.push(not_found())
+        .push(account(10, "alice", "User"))
+        .push(attestations(&[(100, 1)]));
+    let bundles = client(&fake)
+        .attestation_bundles_after_transfer(RepositoryId::new(100)?, &subject(), &owners(&[10])?)
+        .await?;
+    assert_eq!(bundle_numbers(&bundles)?, vec![1]);
+    assert_eq!(
+        fake.paths(),
+        vec![
+            repository_attestations_path(),
+            "/user/10".to_owned(),
+            owner_attestations_path("users", "alice"),
+        ]
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_bundle_of_another_repository_under_the_earlier_owner_is_dropped() -> TestResult {
+    // The earlier owner's listing covers every repository of that account;
+    // a bundle for the same bytes made in another one lends nothing.
+    let fake = FakeTransport::default();
+    fake.push(not_found())
+        .push(account(10, "alice", "User"))
+        .push(attestations(&[(999, 2), (100, 1)]));
+    let bundles = client(&fake)
+        .attestation_bundles_after_transfer(RepositoryId::new(100)?, &subject(), &owners(&[10])?)
+        .await?;
+    assert_eq!(bundle_numbers(&bundles)?, vec![1]);
+
+    // Only another repository's bundle there: nothing found, nothing borrowed.
+    let fake = FakeTransport::default();
+    fake.push(not_found())
+        .push(account(10, "alice", "User"))
+        .push(attestations(&[(999, 2)]));
+    let bundles = client(&fake)
+        .attestation_bundles_after_transfer(RepositoryId::new(100)?, &subject(), &owners(&[10])?)
+        .await?;
+    assert!(bundles.is_empty());
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn an_earlier_owner_that_renamed_its_account_is_found_through_its_id() -> TestResult {
+    // The login of the transfer time is gone (and may belong to someone
+    // else now); only the ID leads to the account.
+    let fake = FakeTransport::default();
+    fake.push(not_found())
+        .push(account(10, "alice-renamed", "User"))
+        .push(attestations(&[(100, 1)]));
+    let bundles = client(&fake)
+        .attestation_bundles_after_transfer(RepositoryId::new(100)?, &subject(), &owners(&[10])?)
+        .await?;
+    assert_eq!(bundle_numbers(&bundles)?, vec![1]);
+    assert_eq!(
+        fake.paths().get(2),
+        Some(&owner_attestations_path("users", "alice-renamed"))
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn only_listed_owners_are_queried_newest_first_and_organizations_use_orgs() -> TestResult {
+    // Owner 30 (the current one) is not in the list and is never asked; an
+    // organization is queried under `orgs/`, a user under `users/`.
+    let fake = FakeTransport::default();
+    fake.push(not_found())
+        .push(account(20, "acme", "Organization"))
+        .push(not_found())
+        .push(account(10, "alice", "User"))
+        .push(attestations(&[(100, 1)]));
+    let bundles = client(&fake)
+        .attestation_bundles_after_transfer(
+            RepositoryId::new(100)?,
+            &subject(),
+            &owners(&[20, 10])?,
+        )
+        .await?;
+    assert_eq!(bundle_numbers(&bundles)?, vec![1]);
+    assert_eq!(
+        fake.paths(),
+        vec![
+            repository_attestations_path(),
+            "/user/20".to_owned(),
+            owner_attestations_path("orgs", "acme"),
+            "/user/10".to_owned(),
+            owner_attestations_path("users", "alice"),
+        ]
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn the_first_place_with_bundles_ends_the_lookup() -> TestResult {
+    // Bundles at the repository: no owner is looked up at all.
+    let fake = FakeTransport::default();
+    fake.push(attestations(&[(100, 1)]));
+    let bundles = client(&fake)
+        .attestation_bundles_after_transfer(
+            RepositoryId::new(100)?,
+            &subject(),
+            &owners(&[20, 10])?,
+        )
+        .await?;
+    assert_eq!(bundle_numbers(&bundles)?, vec![1]);
+    assert_eq!(fake.paths(), vec![repository_attestations_path()]);
+
+    // Bundles at the newest earlier owner: the older one is not asked.
+    let fake = FakeTransport::default();
+    fake.push(not_found())
+        .push(account(20, "acme", "Organization"))
+        .push(attestations(&[(100, 2)]));
+    let bundles = client(&fake)
+        .attestation_bundles_after_transfer(
+            RepositoryId::new(100)?,
+            &subject(),
+            &owners(&[20, 10])?,
+        )
+        .await?;
+    assert_eq!(bundle_numbers(&bundles)?, vec![2]);
+    assert_eq!(fake.paths().len(), 3);
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn nothing_anywhere_is_an_empty_list_within_two_requests_per_owner() -> TestResult {
+    // A deleted earlier account (404 by ID) is skipped; nothing found is no
+    // evidence, which the caller holds as E_EVIDENCE_DOWNGRADE. A repeated
+    // ID is asked once.
+    let fake = FakeTransport::default();
+    fake.push(not_found())
+        .push(not_found())
+        .push(account(10, "alice", "User"))
+        .push(not_found());
+    let bundles = client(&fake)
+        .attestation_bundles_after_transfer(
+            RepositoryId::new(100)?,
+            &subject(),
+            &owners(&[20, 10, 20, 10])?,
+        )
+        .await?;
+    assert!(bundles.is_empty());
+    assert_eq!(
+        fake.paths(),
+        vec![
+            repository_attestations_path(),
+            "/user/20".to_owned(),
+            "/user/10".to_owned(),
+            owner_attestations_path("users", "alice"),
+        ]
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn an_account_answer_for_another_id_is_refused() -> TestResult {
+    // A response naming another account must not steer the lookup to that
+    // account's attestations.
+    let fake = FakeTransport::default();
+    fake.push(not_found()).push(account(11, "mallory", "User"));
+    let result = client(&fake)
+        .attestation_bundles_after_transfer(RepositoryId::new(100)?, &subject(), &owners(&[10])?)
+        .await;
+    assert!(
+        matches!(
+            result,
+            Err(GitHubError::Wire(WireError::Invalid { field: "id", .. }))
+        ),
+        "{result:?}"
+    );
+    assert_eq!(fake.paths().len(), 2);
+    Ok(())
+}

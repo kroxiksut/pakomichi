@@ -11,10 +11,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use super::*;
 use crate::ipc::frame::FrameError;
 use crate::ipc::protocol::{
-    ConfirmRequest, ErrorBody, OperationQuery, PROTOCOL_VERSION, PlanRequest,
+    ConfirmRequest, ErrorBody, OperationQuery, PROTOCOL_VERSION, PlanRequest, SyncTarget,
 };
 
 type TestResult = Result<(), Box<dyn Error>>;
+
+/// Any administrative action: the test service plans and runs them alike.
+const SYNC_ALL: AdminAction = AdminAction::Sync(SyncTarget {
+    source_id: None,
+    force: false,
+});
 
 struct TempDir(PathBuf);
 
@@ -111,7 +117,7 @@ fn start(
     let dir = TempDir::new()?;
     let uid = dir.uid()?;
     let service = Arc::new(TestService {
-        plan: Mutex::new("reset-failed pakomichi.socket; start pakomichi.socket".to_owned()),
+        plan: Mutex::new("synchronize every source".to_owned()),
         run_for,
         runs: AtomicUsize::new(0),
     });
@@ -208,9 +214,7 @@ fn a_peer_with_another_uid_is_refused_on_every_channel() -> TestResult {
 fn administrative_requests_are_unknown_on_the_status_channel() -> TestResult {
     let harness = harness()?;
     let mut stream = connect(&harness.status)?;
-    let plan = encode(&AdminRequest::Plan(PlanRequest {
-        action: AdminAction::DoctorRepair(Empty {}),
-    }));
+    let plan = encode(&AdminRequest::Plan(PlanRequest { action: SYNC_ALL }));
     let response = ask(&mut stream, &plan)?;
     assert_eq!(error_kind(&response), Some(ErrorKind::Malformed));
     assert!(
@@ -227,6 +231,25 @@ fn administrative_requests_are_unknown_on_the_status_channel() -> TestResult {
         error_kind(&ask(&mut stream, &confirm)?),
         Some(ErrorKind::Malformed)
     );
+    assert_eq!(harness.service.runs.load(Ordering::SeqCst), 0);
+    Ok(())
+}
+
+#[test]
+fn n029_socket_recovery_is_refused_on_every_channel() -> TestResult {
+    // The recovery runs as root in the CLI, never through the service.
+    let harness = harness()?;
+    let plan = r#"{"action":{"kind":"doctor_repair"},"schema_version":1,"type":"plan"}"#;
+    for path in [&harness.status, &harness.admin] {
+        let mut stream = connect(path)?;
+        let response = ask(&mut stream, plan)?;
+        assert_eq!(
+            error_kind(&response),
+            Some(ErrorKind::Malformed),
+            "{}: {response:?}",
+            path.display()
+        );
+    }
     assert_eq!(harness.service.runs.load(Ordering::SeqCst), 0);
     Ok(())
 }
@@ -269,9 +292,7 @@ fn a_confirmation_without_its_field_or_with_false_starts_nothing() -> TestResult
     let mut stream = connect(&harness.admin)?;
     let Response::Plan(plan) = request(
         &mut stream,
-        &AdminRequest::Plan(PlanRequest {
-            action: AdminAction::DoctorRepair(Empty {}),
-        }),
+        &AdminRequest::Plan(PlanRequest { action: SYNC_ALL }),
     )?
     else {
         return Err("expected a plan".into());
@@ -330,9 +351,7 @@ fn a_confirmed_plan_runs_once_as_an_operation() -> TestResult {
     let mut stream = connect(&harness.admin)?;
     let Response::Plan(plan) = request(
         &mut stream,
-        &AdminRequest::Plan(PlanRequest {
-            action: AdminAction::DoctorRepair(Empty {}),
-        }),
+        &AdminRequest::Plan(PlanRequest { action: SYNC_ALL }),
     )?
     else {
         return Err("expected a plan".into());
@@ -340,7 +359,7 @@ fn a_confirmed_plan_runs_once_as_an_operation() -> TestResult {
     assert_eq!(
         plan.plan_digest,
         plan_digest(
-            &AdminAction::DoctorRepair(Empty {}),
+            &SYNC_ALL,
             &Plan {
                 summary: plan.summary.clone(),
                 changes: plan.changes.clone(),
@@ -387,9 +406,7 @@ fn a_plan_that_changed_since_it_was_shown_is_refused() -> TestResult {
     let mut stream = connect(&harness.admin)?;
     let Response::Plan(plan) = request(
         &mut stream,
-        &AdminRequest::Plan(PlanRequest {
-            action: AdminAction::DoctorRepair(Empty {}),
-        }),
+        &AdminRequest::Plan(PlanRequest { action: SYNC_ALL }),
     )?
     else {
         return Err("expected a plan".into());
@@ -426,9 +443,7 @@ fn unknown_and_foreign_operations_get_the_same_answer() -> TestResult {
     let mut stream = connect(&harness.admin)?;
     let Response::Plan(plan) = request(
         &mut stream,
-        &AdminRequest::Plan(PlanRequest {
-            action: AdminAction::DoctorRepair(Empty {}),
-        }),
+        &AdminRequest::Plan(PlanRequest { action: SYNC_ALL }),
     )?
     else {
         return Err("expected a plan".into());
@@ -471,9 +486,7 @@ fn ping_answers_while_a_long_operation_runs() -> TestResult {
     let mut admin = connect(&harness.admin)?;
     let Response::Plan(plan) = request(
         &mut admin,
-        &AdminRequest::Plan(PlanRequest {
-            action: AdminAction::DoctorRepair(Empty {}),
-        }),
+        &AdminRequest::Plan(PlanRequest { action: SYNC_ALL }),
     )?
     else {
         return Err("expected a plan".into());
@@ -587,17 +600,12 @@ fn a_large_response_is_read_completely_before_the_close() -> TestResult {
     let mut stream = connect(&harness.admin)?;
     let Response::Plan(plan) = request(
         &mut stream,
-        &AdminRequest::Plan(PlanRequest {
-            action: AdminAction::DoctorRepair(Empty {}),
-        }),
+        &AdminRequest::Plan(PlanRequest { action: SYNC_ALL }),
     )?
     else {
         return Err("expected a plan".into());
     };
-    assert_eq!(
-        plan.summary.len(),
-        "doctor_repair: ".len() + 3 * 1024 * 1024
-    );
+    assert_eq!(plan.summary.len(), "sync: ".len() + 3 * 1024 * 1024);
     stream.shutdown(Shutdown::Write)?;
     assert!(matches!(
         read_frame(&mut stream, MAX_RESPONSE_BYTES),

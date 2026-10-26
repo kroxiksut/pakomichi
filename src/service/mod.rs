@@ -18,6 +18,7 @@
 //! synchronization pipeline (`pipeline`); a service built without one
 //! refuses them.
 
+mod pinned;
 mod pipeline;
 mod signer;
 
@@ -28,12 +29,14 @@ use tokio::runtime::Handle;
 pub use pipeline::Pipeline;
 pub use signer::{Discovery, MAX_DISCOVERY_ASSETS, discover_signer};
 
+use crate::apt::policy::{Finding, Notice};
 use crate::attest::{AttestationVerifier, AttestedSigner};
 use crate::github::{
     GitHubClient, PinnedRepository, RepositoryIdentity, Transport, parse_repository_address,
 };
 use crate::ipc::protocol::{
-    ActionRefusal, AdminAction, ChangeKind, OperationOutcome, Plan, PlanChange, SourceStatus,
+    ActionRefusal, AdminAction, AptProblem, ChangeKind, OperationOutcome, Plan, PlanChange,
+    SourceStatus, UpdateElsewhere,
 };
 use crate::ipc::server::Service;
 use crate::state::{StateError, StateOwner};
@@ -121,6 +124,52 @@ fn choose_signer(
     }
 }
 
+fn update_elsewhere(notice: &Notice) -> UpdateElsewhere {
+    UpdateElsewhere {
+        name: notice.name.clone(),
+        version: notice.version.clone(),
+        offered_by: notice.source.clone(),
+    }
+}
+
+fn apt_problem(finding: &Finding) -> AptProblem {
+    let message = match finding {
+        Finding::NotProtected {
+            name,
+            candidate: None,
+            ..
+        } => format!(
+            "APT does not offer {name} from this source (has `apt update` run since it was \
+             published?), so it is not protected yet"
+        ),
+        Finding::NotProtected {
+            name,
+            candidate: Some(candidate),
+            priority,
+        } => format!(
+            "APT would take {name} {candidate} (priority {}) instead of this source's pinned \
+             version: the next upgrade changes its publisher",
+            priority.map_or_else(|| "unknown".to_owned(), |priority| priority.to_string())
+        ),
+        Finding::EqualVersionElsewhere {
+            name,
+            version,
+            other,
+        } => format!(
+            "{name} {version} is also offered by {other}: which file APT downloads is not certain"
+        ),
+        Finding::TakesOver { name, version } => format!(
+            "{name} {version} from this source would replace the copy installed from another \
+             source, though the name is not activated here"
+        ),
+    };
+    AptProblem {
+        name: Some(finding.name().to_owned()),
+        reason_code: Some(finding.reason()),
+        message,
+    }
+}
+
 /// How the plan names the pinned identity; the run must find the same.
 fn pinned_identity(identity: &RepositoryIdentity) -> String {
     format!(
@@ -155,14 +204,24 @@ impl<T: Transport> StateService<T> {
         Ok(service)
     }
 
-    /// Activation and synchronization through `pipeline`.
-    #[must_use]
-    pub fn with_pipeline(mut self, pipeline: Box<dyn Pipeline>) -> Self {
+    /// Activation and synchronization through `pipeline`; the status then
+    /// also says what APT will choose.
+    pub fn with_pipeline(mut self, pipeline: Box<dyn Pipeline>) -> Result<Self, StateError> {
         self.pipeline = Some(pipeline);
-        self
+        {
+            let mut owner = self.owner.lock().unwrap_or_else(PoisonError::into_inner);
+            self.refresh(&mut owner)?;
+        }
+        Ok(self)
     }
 
     fn refresh(&self, owner: &mut StateOwner) -> Result<(), StateError> {
+        // What APT does now is read once per refresh, not per status
+        // request: a status never starts a process.
+        let apt = self
+            .pipeline
+            .as_ref()
+            .map(|pipeline| pipeline.apt_view(owner));
         let mut sources = Vec::new();
         for row in owner.sources()? {
             let activated = owner
@@ -170,6 +229,30 @@ impl<T: Transport> StateService<T> {
                 .into_iter()
                 .map(|(_, name)| name)
                 .collect();
+            let (updates_elsewhere, apt_problems) = match &apt {
+                None => (Vec::new(), Vec::new()),
+                Some(Ok(views)) => views.get(&row.id).map_or_else(
+                    || (Vec::new(), Vec::new()),
+                    |view| {
+                        (
+                            view.updates_elsewhere
+                                .iter()
+                                .map(update_elsewhere)
+                                .collect(),
+                            view.problems.iter().map(apt_problem).collect(),
+                        )
+                    },
+                ),
+                // Not known is not kept: every source says so.
+                Some(Err(error)) => (
+                    Vec::new(),
+                    vec![AptProblem {
+                        name: None,
+                        reason_code: None,
+                        message: format!("what APT will choose could not be read: {error}"),
+                    }],
+                ),
+            };
             sources.push(SourceStatus {
                 source_id: row.id,
                 url: row.canonical_url,
@@ -179,6 +262,8 @@ impl<T: Transport> StateService<T> {
                 last_verified_at: row.last_verified_at,
                 signer: row.signer.map(|signer| signer.to_string()),
                 activated,
+                updates_elsewhere,
+                apt_problems,
             });
         }
         *self
@@ -327,9 +412,10 @@ impl<T: Transport + 'static> Service for StateService<T> {
             }
             AdminAction::SourceActivate(activate) => self.plan_activate(&mut owner, activate),
             AdminAction::Sync(target) => self.plan_sync(target),
-            AdminAction::DoctorRepair(_) => {
-                Err(refused("doctor --repair is not part of this build yet"))
+            AdminAction::SourceAllowPinned(target) => {
+                self.plan_allow_pinned(&mut owner, &target.source_id)
             }
+            AdminAction::ReleaseApprove(approve) => self.plan_release_approve(&mut owner, approve),
         }
     }
 
@@ -341,9 +427,13 @@ impl<T: Transport + 'static> Service for StateService<T> {
             }
             AdminAction::SourceActivate(activate) => self.run_activate(&mut owner, activate, plan),
             AdminAction::Sync(target) => self.run_sync(&mut owner, target),
-            AdminAction::DoctorRepair(_) => {
-                Err(failed("not part of this build yet; nothing was changed"))
+            AdminAction::SourceAllowPinned(target) => {
+                self.run_allow_pinned(&mut owner, &target.source_id)
             }
+            AdminAction::ReleaseApprove(approve) => match self.pipeline.as_deref() {
+                Some(pipeline) => self.run_release_approve(pipeline, &mut owner, approve, plan),
+                None => Err(failed("no synchronization pipeline; nothing was changed")),
+            },
         };
         if let Err(error) = self.refresh(&mut owner) {
             return Err(failed(format!("the state could not be read back: {error}")));
@@ -356,6 +446,12 @@ impl<T: Transport + 'static> Service for StateService<T> {
             .read()
             .unwrap_or_else(PoisonError::into_inner)
             .clone()
+    }
+
+    fn loopback_port(&self) -> Option<u16> {
+        self.pipeline
+            .as_ref()
+            .map(|pipeline| pipeline.loopback_port())
     }
 }
 

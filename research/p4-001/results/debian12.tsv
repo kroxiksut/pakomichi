@@ -1,0 +1,12 @@
+D01-healthy-has-nothing-to-fix	PASS	exit 0; no problems found
+D02-without-root-the-same-and-nothing-changed	PASS	exit 0
+D03-a-stopped-reader-socket	PASS	exit 1
+D04-a-failed-reader-socket-is-an-outage-with-the-fix	PASS	socket failed/service-start-limit-hit; exit 1
+D05-the-printed-fix-repairs-it	PASS	exit 0; active
+D06-a-reader-on-another-port	PASS	exit 1
+D07-a-silent-state-owner-is-found-and-the-rest-still-checked	PASS	exit 1
+D08-healthy-again	PASS	exit 0; no problems found
+D09-repair-without-a-terminal-changes-nothing	PASS	exit 3; socket failed
+D10-repair-without-root-is-refused-and-changes-nothing	PASS	exit 1; socket failed
+D11-the-confirmed-repair-recovers-the-reader-socket	PASS	exit 0; socket active
+D12-healthy-after-the-repair	PASS	exit 0; no problems found

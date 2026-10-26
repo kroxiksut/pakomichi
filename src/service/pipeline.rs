@@ -16,6 +16,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::{StateService, failed, refused};
 use crate::apt::operation::Ended;
+use crate::apt::policy::{Finding, Held};
+use crate::error::ReasonCode;
 use crate::family::{Family, FamilyState, MemberKey};
 use crate::github::Transport;
 use crate::inventory::Ecosystem;
@@ -25,21 +27,59 @@ use crate::ipc::protocol::{
 };
 use crate::policy::SourceMode;
 use crate::state::StateOwner;
+use crate::sync::publish::{Configured, HeldFamily};
+use crate::sync::selection::SourceAptView;
 use crate::sync::{ArtifactOutcome, SyncError, SyncReport};
 
 /// The synchronization pipeline as the service uses it; the production one
 /// talks to GitHub, the inspector, the signer, and the root applier.
 pub trait Pipeline: Send + Sync {
-    /// One pass of `source_id`.
+    /// One pass of `source_id`; `force` asks the forge about every
+    /// release's evidence (`pchi sync --force`, ADR-037 point 1).
     fn synchronize(
         &self,
         owner: &mut StateOwner,
         source_id: &str,
         at: &str,
+        force: bool,
     ) -> Result<SyncReport, SyncError>;
-    /// Applies the APT configuration every source asks for, and keeps the
-    /// activation journal.
-    fn configure(&self, owner: &mut StateOwner, at: &str) -> Result<Ended, String>;
+    /// Applies the APT configuration every source asks for, with the pins
+    /// APT can keep (`sync::publish::gate_pins`), and keeps the activation
+    /// journal.
+    fn configure(&self, owner: &mut StateOwner, at: &str) -> Result<Configured, String>;
+    /// What APT will choose now for every source's names, judged against
+    /// what Pakomichi promised (ADR-022 point 3); the error says why APT
+    /// could not be asked.
+    fn apt_view(&self, owner: &mut StateOwner) -> Result<BTreeMap<String, SourceAptView>, String>;
+    /// The loopback port the APT sources name (ADR-036 point 2).
+    fn loopback_port(&self) -> u16;
+}
+
+/// What the administrator is told about a family whose pin is not written.
+fn held_line(family: &HeldFamily) -> String {
+    let members: Vec<&str> = family.members.iter().map(String::as_str).collect();
+    let members = members.join(", ");
+    match &family.held {
+        Held::NotListed { name } => format!(
+            "{}: {members} published, not pinned yet: APT does not list {name} from this \
+             source; run apt update, then pchi sync",
+            family.source_id
+        ),
+        Held::Ambiguous(Finding::EqualVersionElsewhere {
+            name,
+            version,
+            other,
+        }) => format!(
+            "{}: {members} not pinned ({}): {name} {version} is also offered by {other}",
+            family.source_id,
+            ReasonCode::ESourceAmbiguous.as_str()
+        ),
+        Held::Ambiguous(finding) => format!(
+            "{}: {members} not pinned ({}): {finding:?}",
+            family.source_id,
+            finding.reason().as_str()
+        ),
+    }
 }
 
 const fn mode_of(policy: ActivationPolicy) -> SourceMode {
@@ -101,6 +141,14 @@ fn activation(
             "source {source} was added with --observe and is never offered for activation"
         )));
     }
+    // A source with Pinned consent is Pinned for the mode limits, whatever
+    // its floor (ADR-027 point 5, P2-011a).
+    if row.pinned_consent && activate.policy == ActivationPolicy::Preferred {
+        return Err(refused(format!(
+            "source {source} has Pinned consent and can be activated only with --policy \
+             supplemental (ADR-027)"
+        )));
+    }
     let seen = owner
         .seen_names(source)
         .map_err(|error| refused(error.to_string()))?;
@@ -145,7 +193,7 @@ fn activation(
     })
 }
 
-fn report_lines(report: &SyncReport) -> String {
+pub(super) fn report_lines(report: &SyncReport) -> String {
     let published: Vec<String> = report
         .generations
         .iter()
@@ -161,8 +209,31 @@ fn report_lines(report: &SyncReport) -> String {
             )
         })
         .count();
+    // A Pinned release waits for the administrator: say how to approve it.
+    let mut waiting: Vec<(u64, &str)> = report
+        .artifacts
+        .iter()
+        .filter(|artifact| {
+            matches!(
+                artifact.outcome,
+                ArtifactOutcome::Held(ReasonCode::EReleaseApprovalRequired, _)
+            )
+        })
+        .map(|artifact| (artifact.release_id, artifact.tag.as_str()))
+        .collect();
+    waiting.sort_unstable();
+    waiting.dedup();
+    let approvals: String = waiting
+        .iter()
+        .map(|(id, tag)| {
+            format!(
+                "\n{}: release {tag} waits for approval: pchi release approve {} {id}",
+                report.source_id, report.source_id
+            )
+        })
+        .collect();
     format!(
-        "{}: {} release(s){}; published: {}; held or rejected: {held}",
+        "{}: {} release(s){}; published: {}; held or rejected: {held}{approvals}",
         report.source_id,
         report.releases,
         if report.truncated {
@@ -272,6 +343,7 @@ impl<T: Transport> StateService<T> {
             owner,
             std::slice::from_ref(&activate.source_id),
             &at,
+            false,
             &mut lines,
         );
         let message = lines.join("\n");
@@ -292,8 +364,13 @@ impl<T: Transport> StateService<T> {
             summary: format!(
                 "synchronize {}: new releases are verified and admitted by the policy, activated \
                  names are published, and the APT configuration is applied; nothing new is \
-                 activated",
-                sources.join(", ")
+                 activated{}",
+                sources.join(", "),
+                if target.force {
+                    "; the evidence of every release is checked again with the forge"
+                } else {
+                    ""
+                }
             ),
             changes: sources
                 .into_iter()
@@ -322,8 +399,14 @@ impl<T: Transport> StateService<T> {
             .map_err(|refusal| failed(refusal.message))?;
         let at = (self.now)();
         let mut lines = Vec::new();
-        let mut outcome =
-            self.synchronize_and_configure(pipeline, owner, &sources, &at, &mut lines);
+        let mut outcome = self.synchronize_and_configure(
+            pipeline,
+            owner,
+            &sources,
+            &at,
+            target.force,
+            &mut lines,
+        );
         let message = lines.join("\n");
         match &mut outcome {
             Ok(done) | Err(done) => done.message = message,
@@ -349,18 +432,19 @@ impl<T: Transport> StateService<T> {
 
     /// Every source in turn, then the APT configuration once. A source that
     /// fails does not stop the others; what it published before stays.
-    fn synchronize_and_configure(
+    pub(super) fn synchronize_and_configure(
         &self,
         pipeline: &dyn Pipeline,
         owner: &mut StateOwner,
         sources: &[String],
         at: &str,
+        force: bool,
         lines: &mut Vec<String>,
     ) -> Result<OperationOutcome, OperationOutcome> {
         let mut codes = Vec::new();
         let mut failures = 0;
         for source in sources {
-            match pipeline.synchronize(owner, source, at) {
+            match pipeline.synchronize(owner, source, at, force) {
                 Ok(report) => {
                     lines.push(report_lines(&report));
                     codes.extend(report.reason_codes());
@@ -372,7 +456,16 @@ impl<T: Transport> StateService<T> {
                 }
             }
         }
-        match pipeline.configure(owner, at) {
+        let configured = pipeline.configure(owner, at).map(|configured| {
+            for family in &configured.held {
+                lines.push(held_line(family));
+                if let Held::Ambiguous(finding) = &family.held {
+                    codes.push(finding.reason());
+                }
+            }
+            configured.ended
+        });
+        match configured {
             Ok(Ended::Verified { changed }) => lines.push(if changed.is_empty() {
                 "APT configuration unchanged".to_owned()
             } else {

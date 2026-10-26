@@ -7,16 +7,19 @@
 //! Read-only commands use `status.sock`; administrative ones use
 //! `admin.sock`, show the server's plan, and ask the administrator to type
 //! `yes` at a terminal. There is no `--yes`: a confirmation that a script
-//! could give is not a confirmation (ADR-029 point 8).
+//! could give is not a confirmation (ADR-029 point 8). `doctor --repair`
+//! is the exception to the channel: it runs `systemctl` in the CLI as root,
+//! because the state owner is unprivileged and may be the unit that is down.
 
 use std::fmt::Write as _;
 
 use crate::attest::{AttestedSigner, SignerRef};
 use crate::ipc::protocol::{
-    ActivationPolicy, AdminAction, Empty, OperationOutcome, PlanView, SourceActivate, SourceAdd,
-    SourceStatus, StatusReport, SyncTarget,
+    ActivationPolicy, AdminAction, OperationOutcome, PlanView, ReleaseApprove, SourceActivate,
+    SourceAdd, SourceAllowPinned, SourceStatus, StatusReport, SyncTarget,
 };
 
+pub mod doctor;
 #[cfg(unix)]
 mod run;
 
@@ -35,9 +38,21 @@ pub mod exit {
 /// What the user asked for.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Command {
-    Status { json: bool },
-    SourceList { json: bool },
-    SourceInspect { source_id: String, json: bool },
+    Status {
+        json: bool,
+    },
+    SourceList {
+        json: bool,
+    },
+    SourceInspect {
+        source_id: String,
+        json: bool,
+    },
+    /// `pchi doctor`: diagnoses, changes nothing.
+    Doctor,
+    /// `pchi doctor --repair`: the socket recovery, run by the CLI itself as
+    /// root after a confirmation at a terminal, never by the service.
+    DoctorRepair,
     Admin(AdminAction),
     Help,
 }
@@ -48,8 +63,11 @@ usage:
   pchi source list [--json]
   pchi source inspect <id> [--json]
   pchi source activate <id> --packages <comma-list> [--policy supplemental|preferred]
+  pchi source allow-pinned <id>
+  pchi release approve <source-id> <release-id>
   pchi sync [<id>] [--force]
   pchi status [--json]
+  pchi doctor
   pchi doctor --repair
 ";
 
@@ -119,6 +137,24 @@ pub fn parse(arguments: &[String]) -> Result<Command, String> {
                 signer,
             })))
         }
+        ["source", "allow-pinned", id] if !id.starts_with('-') => Ok(Command::Admin(
+            AdminAction::SourceAllowPinned(SourceAllowPinned {
+                source_id: (*id).to_owned(),
+            }),
+        )),
+        ["release", "approve", id, release] if !id.starts_with('-') => {
+            let release_id = release
+                .parse::<u64>()
+                .ok()
+                .filter(|id| *id > 0)
+                .ok_or_else(|| usage("the release id is the forge's positive number"))?;
+            Ok(Command::Admin(AdminAction::ReleaseApprove(
+                ReleaseApprove {
+                    source_id: (*id).to_owned(),
+                    release_id,
+                },
+            )))
+        }
         ["source", "activate", id, rest @ ..] if !id.starts_with('-') => {
             let mut packages = None;
             let mut policy = ActivationPolicy::Supplemental;
@@ -157,7 +193,8 @@ pub fn parse(arguments: &[String]) -> Result<Command, String> {
                 force: flag("--force"),
             })))
         }
-        ["doctor", "--repair"] => Ok(Command::Admin(AdminAction::DoctorRepair(Empty {}))),
+        ["doctor"] => Ok(Command::Doctor),
+        ["doctor", "--repair"] => Ok(Command::DoctorRepair),
         _ => Err(usage("unknown command")),
     }
 }
@@ -224,6 +261,27 @@ pub fn render_outcome(outcome: &OperationOutcome) -> String {
 }
 
 fn render_source(source: &SourceStatus) -> String {
+    let mut text = render_source_line(source);
+    for update in &source.updates_elsewhere {
+        text.push_str(&format!(
+            "  notice: {} {} is offered by {}; the publisher stays until you switch it\n",
+            update.name, update.version, update.offered_by
+        ));
+    }
+    for problem in &source.apt_problems {
+        match problem.reason_code {
+            Some(code) => text.push_str(&format!(
+                "  PROBLEM {}: {}\n",
+                code.as_str(),
+                problem.message
+            )),
+            None => text.push_str(&format!("  PROBLEM: {}\n", problem.message)),
+        }
+    }
+    text
+}
+
+fn render_source_line(source: &SourceStatus) -> String {
     format!(
         "{}  {}  state={}  floor={}  signer={}  pinned_consent={}  activated={}\n",
         source.source_id,

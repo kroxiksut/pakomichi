@@ -18,10 +18,10 @@ use std::time::SystemTime;
 use tokio::runtime::Handle;
 
 use super::evidence::GitHubEvidence;
-use super::publish::{AptPublisher, apply_and_record, desired_apt};
-use super::{AssetFetch, Sync, SyncError, SyncReport, SystemView, synchronize};
-use crate::apt::operation::{Ended, SocketApplier, recover_apt};
-use crate::apt::policy::OurRepository;
+use super::publish::{AptPublisher, Configured, apply_and_record, desired_apt, gate_pins};
+use super::selection::{AptPromises, SourceAptView};
+use super::{AssetFetch, BundleStore, Sync, SyncError, SyncReport, SystemView, synchronize};
+use crate::apt::operation::{SocketApplier, recover_apt};
 use crate::attest::AttestationVerifier;
 use crate::cas::{ExpectedObject, Sha256Digest, Store, Verification};
 use crate::compat::detect;
@@ -29,7 +29,6 @@ use crate::github::{AssetDownloader, AssetLocator, GitHubClient, RustlsConnector
 use crate::inspect::SocketInspector;
 use crate::inventory::{Ecosystem, InventoryPolicy};
 use crate::namespace::collect::system::{CollectorConfig, collect};
-use crate::policy::level::{Level, logical_repository};
 use crate::publish::GenerationStore;
 use crate::publish::sign::{GpgvVerifier, SocketSigner};
 use crate::service::Pipeline;
@@ -115,6 +114,19 @@ impl AssetFetch for CasFetch {
     }
 }
 
+impl BundleStore for CasFetch {
+    fn load(&self, sha256: Sha256Digest) -> Result<Vec<u8>, String> {
+        super::load_verified(&self.cas, sha256)
+    }
+
+    fn store(&self, bundle: &[u8]) -> Result<Sha256Digest, String> {
+        self.cas
+            .insert(bundle)
+            .map(|stored| stored.digest())
+            .map_err(|error| error.to_string())
+    }
+}
+
 /// Everything the production pipeline talks to.
 pub struct Production<T> {
     pub github: GitHubClient<T>,
@@ -142,11 +154,7 @@ impl<T: Transport> Production<T> {
         let mut ours = Vec::new();
         let mut published: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         for row in owner.sources()? {
-            for level in Level::ALL {
-                if let Ok(repository) = logical_repository(&row.id, level) {
-                    ours.push(OurRepository::new(self.port, &repository.apt_label));
-                }
-            }
+            ours.extend(super::selection::our_repositories(&row.id, self.port));
             for artifact in owner.published_artifacts(&row.id)? {
                 published
                     .entry(artifact.key.name)
@@ -189,6 +197,7 @@ impl<T: Transport + Send + std::marker::Sync> Pipeline for Production<T> {
         owner: &mut StateOwner,
         source_id: &str,
         at: &str,
+        force: bool,
     ) -> Result<SyncReport, SyncError> {
         let target = detect::target(Ecosystem::Deb)
             .map_err(|error| SyncError::Platform(error.to_string()))?;
@@ -213,21 +222,51 @@ impl<T: Transport + Send + std::marker::Sync> Pipeline for Production<T> {
             github: &self.github,
             runtime: self.runtime.clone(),
             fetch: &self.fetch,
+            bundles: &self.fetch,
             inspect: &self.inspector,
             evidence: &evidence,
             target: &target,
             system: &system,
             policy: InventoryPolicy::default(),
+            force_full_evidence_check: force,
         };
         synchronize(&sync, owner, &mut publisher, source_id, at)
     }
 
-    fn configure(&self, owner: &mut StateOwner, at: &str) -> Result<Ended, String> {
+    fn configure(&self, owner: &mut StateOwner, at: &str) -> Result<Configured, String> {
         // An apply left without an answer is finished first.
         recover_apt(owner, &self.applier, at).map_err(|error| error.to_string())?;
-        let desired =
+        let mut desired =
             desired_apt(owner, self.port, self.keyring.clone()).map_err(|e| e.to_string())?;
-        apply_and_record(owner, &self.applier, &desired, at).map_err(|error| error.to_string())
+        // APT's view decides which pins may be written; without it nothing
+        // is changed, rather than pinning blind.
+        let policies = crate::apt::system::read_policy(&desired.activated())
+            .map_err(|error| format!("what APT offers could not be read: {error}"))?;
+        let mut pinned_before = BTreeMap::new();
+        for row in owner.sources().map_err(|error| error.to_string())? {
+            let names: BTreeSet<String> = owner
+                .open_activations(&row.id)
+                .map_err(|error| error.to_string())?
+                .into_iter()
+                .map(|(_, name)| name)
+                .collect();
+            pinned_before.insert(row.id, names);
+        }
+        let held = gate_pins(&mut desired, &policies, &pinned_before);
+        let ended = apply_and_record(owner, &self.applier, &desired, at)
+            .map_err(|error| error.to_string())?;
+        Ok(Configured { ended, held })
+    }
+
+    fn apt_view(&self, owner: &mut StateOwner) -> Result<BTreeMap<String, SourceAptView>, String> {
+        let promises = AptPromises::read(owner, self.port).map_err(|error| error.to_string())?;
+        let policies = crate::apt::system::read_policy(&promises.names())
+            .map_err(|error| error.to_string())?;
+        Ok(promises.judge(&policies))
+    }
+
+    fn loopback_port(&self) -> u16 {
+        self.port
     }
 }
 

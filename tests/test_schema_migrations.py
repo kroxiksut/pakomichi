@@ -14,12 +14,16 @@ OWNER_MIGRATION = PROJECT_ROOT / "migrations" / "0002_repository_owner_confirmat
 ACTIVATION_MIGRATION = PROJECT_ROOT / "migrations" / "0003_name_activation.sql"
 SIGNER_MIGRATION = PROJECT_ROOT / "migrations" / "0004_attested_signer.sql"
 MEMBERSHIP_MIGRATION = PROJECT_ROOT / "migrations" / "0005_family_membership.sql"
+EVIDENCE_CHECK_MIGRATION = PROJECT_ROOT / "migrations" / "0006_evidence_full_check.sql"
+EVIDENCE_BUNDLE_MIGRATION = PROJECT_ROOT / "migrations" / "0007_evidence_bundle.sql"
 MIGRATIONS = (
     INITIAL_MIGRATION,
     OWNER_MIGRATION,
     ACTIVATION_MIGRATION,
     SIGNER_MIGRATION,
     MEMBERSHIP_MIGRATION,
+    EVIDENCE_CHECK_MIGRATION,
+    EVIDENCE_BUNDLE_MIGRATION,
 )
 SCHEMA_VERSION = len(MIGRATIONS)
 ZERO_DIGEST = "0" * 64
@@ -155,6 +159,10 @@ def insert_row_in_every_table(connection: sqlite3.Connection) -> None:
         VALUES ('source-1', 'deb', 'example', '2026-10-18T00:00:00Z');
         INSERT INTO attested_signer(source_id, workflow, signer_ref, confirmed_at)
         VALUES ('source-1', '.github/workflows/release.yml', 'tag', '2026-10-18T00:00:00Z');
+        INSERT INTO evidence_full_check(source_id, checked_at)
+        VALUES ('source-1', '2026-10-25T00:00:00Z');
+        INSERT INTO evidence_bundle(evidence_id, source_id, bundle_sha256)
+        VALUES ('evidence-1', 'source-1', '{OTHER_DIGEST}');
         INSERT INTO family_outsider(family_id, ecosystem, native_name)
         VALUES ('family-1', 'deb', 'example');
         INSERT INTO source_policy(
@@ -246,6 +254,8 @@ class InitialMigrationTests(unittest.TestCase):
             "artifact_cache",
             "attested_signer",
             "decision_log",
+            "evidence_bundle",
+            "evidence_full_check",
             "family_outsider",
             "forge_repository",
             "installed_observation",
@@ -281,6 +291,8 @@ class InitialMigrationTests(unittest.TestCase):
                 (3, "name_activation"),
                 (4, "attested_signer"),
                 (5, "family_membership"),
+                (6, "evidence_full_check"),
+                (7, "evidence_bundle"),
             ],
             connection.execute(
                 "SELECT version, name FROM schema_migrations ORDER BY version"
@@ -612,7 +624,7 @@ class InitialMigrationTests(unittest.TestCase):
                         connection.execute(statement, (value,))
             checked_tables.add(table)
 
-        self.assertEqual(21, len(checked_tables))
+        self.assertEqual(23, len(checked_tables))
 
     def test_nullable_columns_accept_null(self) -> None:
         connection = migrated_database()
@@ -1172,11 +1184,140 @@ class FamilyOutsiderTests(unittest.TestCase):
         insert_artifact_prerequisites(connection)
         apply_migrations(connection, (MEMBERSHIP_MIGRATION,))
         apply_migrations(connection, (MEMBERSHIP_MIGRATION,))
-        self.assertEqual(
-            SCHEMA_VERSION, connection.execute("PRAGMA user_version").fetchone()[0]
-        )
+        self.assertEqual(5, connection.execute("PRAGMA user_version").fetchone()[0])
         self.assertEqual(
             0, connection.execute("SELECT COUNT(*) FROM family_outsider").fetchone()[0]
+        )
+
+
+class EvidenceFullCheckTests(unittest.TestCase):
+    """Migration 0006: the last full evidence check of a source (ADR-037 point 1)."""
+
+    def setUp(self) -> None:
+        self.connection = migrated_database()
+        insert_source(self.connection)
+
+    def test_a_check_belongs_to_a_known_source_and_there_is_one_per_source(self) -> None:
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.connection.execute(
+                "INSERT INTO evidence_full_check(source_id, checked_at) "
+                "VALUES ('unknown', '2026-10-25T00:00:00Z')"
+            )
+        self.connection.execute(
+            "INSERT INTO evidence_full_check(source_id, checked_at) "
+            "VALUES ('source-1', '2026-10-25T00:00:00Z')"
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.connection.execute(
+                "INSERT INTO evidence_full_check(source_id, checked_at) "
+                "VALUES ('source-1', '2026-10-25T01:00:00Z')"
+            )
+        # A source with a recorded check cannot be removed from under it.
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.connection.execute("DELETE FROM forge_repository WHERE id = 'source-1'")
+
+    def test_upgrading_from_0005_leaves_every_source_due_for_a_full_check(self) -> None:
+        connection = migrated_database(migrations=MIGRATIONS[:5])
+        insert_source(connection)
+        apply_migrations(connection, (EVIDENCE_CHECK_MIGRATION,))
+        apply_migrations(connection, (EVIDENCE_CHECK_MIGRATION,))
+        self.assertEqual(6, connection.execute("PRAGMA user_version").fetchone()[0])
+        self.assertEqual(
+            0, connection.execute("SELECT COUNT(*) FROM evidence_full_check").fetchone()[0]
+        )
+
+
+class EvidenceBundleTests(unittest.TestCase):
+    """Migration 0007: the bundles evidence was verified from (ADR-034 point 1)."""
+
+    def setUp(self) -> None:
+        self.connection = migrated_database()
+        insert_artifact_prerequisites(self.connection)
+
+    def link(
+        self,
+        bundle: str,
+        evidence_id: str = "evidence-1",
+        source_id: str = "source-1",
+    ) -> None:
+        self.connection.execute(
+            "INSERT INTO evidence_bundle(evidence_id, source_id, bundle_sha256) "
+            "VALUES (?, ?, ?)",
+            (evidence_id, source_id, bundle),
+        )
+
+    def bundles(self) -> list[str]:
+        return [
+            row[0]
+            for row in self.connection.execute(
+                "SELECT bundle_sha256 FROM evidence_bundle ORDER BY bundle_sha256"
+            )
+        ]
+
+    def test_a_bundle_belongs_to_recorded_evidence_of_its_own_source(self) -> None:
+        insert_source(self.connection, source_id="source-2", repository_id="1002")
+        # Unknown evidence, and evidence of source-1 claimed for source-2:
+        # a bundle never stands for evidence that is not there.
+        for evidence_id, source_id in (("unknown", "source-1"), ("evidence-1", "source-2")):
+            with self.assertRaises(sqlite3.IntegrityError, msg=(evidence_id, source_id)):
+                self.link(OTHER_DIGEST, evidence_id, source_id)
+        self.assertEqual([], self.bundles())
+
+    def test_only_a_lowercase_sha256_names_a_bundle(self) -> None:
+        for digest in ("1" * 63, "1" * 65, "A" * 64, "g" * 64, " " + "1" * 63):
+            with self.assertRaises(sqlite3.IntegrityError, msg=digest):
+                self.link(digest)
+        self.link(OTHER_DIGEST)
+        self.assertEqual([OTHER_DIGEST], self.bundles())
+
+    def test_a_recorded_bundle_is_never_changed_or_removed(self) -> None:
+        self.link(OTHER_DIGEST)
+        for statement in (
+            f"UPDATE evidence_bundle SET bundle_sha256 = '{'2' * 64}'",
+            "UPDATE evidence_bundle SET source_id = 'source-1'",
+            "DELETE FROM evidence_bundle",
+        ):
+            with self.assertRaisesRegex(
+                sqlite3.IntegrityError, "append-only", msg=statement
+            ):
+                self.connection.execute(statement)
+        self.assertEqual([OTHER_DIGEST], self.bundles())
+        # The same bundle is recorded once.
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.link(OTHER_DIGEST)
+
+    def test_evidence_names_at_most_sixteen_bundles(self) -> None:
+        digests = [f"{index:064x}" for index in range(1, 18)]
+        for digest in digests[:16]:
+            self.link(digest)
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "at most 16 bundles"):
+            self.link(digests[16])
+        self.assertEqual(digests[:16], self.bundles())
+        # Recording one of them again is not a seventeenth.
+        self.connection.execute(
+            "INSERT OR IGNORE INTO evidence_bundle(evidence_id, source_id, bundle_sha256) "
+            "VALUES ('evidence-1', 'source-1', ?)",
+            (digests[0],),
+        )
+        self.assertEqual(16, len(self.bundles()))
+
+    def test_upgrading_from_0006_keeps_the_evidence_and_names_no_bundle(self) -> None:
+        connection = migrated_database(migrations=MIGRATIONS[:6])
+        insert_artifact_prerequisites(connection)
+        apply_migrations(connection, (EVIDENCE_BUNDLE_MIGRATION,))
+        apply_migrations(connection, (EVIDENCE_BUNDLE_MIGRATION,))
+        self.assertEqual(7, connection.execute("PRAGMA user_version").fetchone()[0])
+        self.assertEqual(
+            [("evidence-1",)], connection.execute("SELECT id FROM trust_evidence").fetchall()
+        )
+        self.assertEqual(
+            0, connection.execute("SELECT COUNT(*) FROM evidence_bundle").fetchone()[0]
+        )
+        self.assertEqual(
+            1,
+            connection.execute(
+                "SELECT COUNT(*) FROM schema_migrations WHERE version = 7"
+            ).fetchone()[0],
         )
 
 

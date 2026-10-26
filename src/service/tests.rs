@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use serde_json::{Value, json};
@@ -9,6 +10,7 @@ use crate::attest::{SignerRef, TrustedRoots, ensure_crypto_provider};
 use crate::github::{ApiRequest, ApiResponse, ResponseHeaders, TransportError};
 use crate::ipc::protocol::{ActivationPolicy, SourceActivate, SourceAdd};
 use crate::state::test_support::TempDir;
+use crate::sync::selection::SourceAptView;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -418,10 +420,25 @@ fn actions_of_later_steps_are_refused_and_change_nothing() -> TestResult {
 
 /// The pipeline as far as the service sees it: which sources ran, and
 /// whether the APT configuration was applied.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 struct FakePipeline {
     calls: Arc<Mutex<Vec<String>>>,
     failing: Option<String>,
+    /// What APT's choice looks like; `Err`: APT could not be asked.
+    apt: Arc<Mutex<Result<BTreeMap<String, SourceAptView>, String>>>,
+    /// The families whose pins the configuration held back.
+    held: Arc<Mutex<Vec<crate::sync::publish::HeldFamily>>>,
+}
+
+impl Default for FakePipeline {
+    fn default() -> Self {
+        Self {
+            calls: Arc::default(),
+            failing: None,
+            apt: Arc::new(Mutex::new(Ok(BTreeMap::new()))),
+            held: Arc::default(),
+        }
+    }
 }
 
 impl FakePipeline {
@@ -439,11 +456,16 @@ impl Pipeline for FakePipeline {
         _owner: &mut StateOwner,
         source_id: &str,
         _at: &str,
+        force: bool,
     ) -> Result<crate::sync::SyncReport, crate::sync::SyncError> {
         self.calls
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .push(format!("sync {source_id}"));
+            .push(if force {
+                format!("sync {source_id} --force")
+            } else {
+                format!("sync {source_id}")
+            });
         if self.failing.as_deref() == Some(source_id) {
             return Err(crate::sync::SyncError::GitHub("connect: refused".into()));
         }
@@ -457,14 +479,32 @@ impl Pipeline for FakePipeline {
         &self,
         _owner: &mut StateOwner,
         _at: &str,
-    ) -> Result<crate::apt::operation::Ended, String> {
+    ) -> Result<crate::sync::publish::Configured, String> {
         self.calls
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push("configure".to_owned());
-        Ok(crate::apt::operation::Ended::Verified {
-            changed: Vec::new(),
+        Ok(crate::sync::publish::Configured {
+            ended: crate::apt::operation::Ended::Verified {
+                changed: Vec::new(),
+            },
+            held: self
+                .held
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone(),
         })
+    }
+
+    fn loopback_port(&self) -> u16 {
+        879
+    }
+
+    fn apt_view(&self, _owner: &mut StateOwner) -> Result<BTreeMap<String, SourceAptView>, String> {
+        self.apt
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 }
 
@@ -486,7 +526,7 @@ fn added(observe: bool, pipeline: &FakePipeline) -> Result<Bed, Box<dyn std::err
         _dir,
         _runtime,
         github,
-        service: service.with_pipeline(Box::new(pipeline.clone())),
+        service: service.with_pipeline(Box::new(pipeline.clone()))?,
     })
 }
 
@@ -677,4 +717,361 @@ fn one_failing_source_fails_the_operation_and_the_configuration_still_runs() -> 
         [format!("sync {SOURCE}"), "configure".to_owned()]
     );
     Ok(())
+}
+
+// ------------------------------------------- what APT chooses (N-027)
+
+fn sync_all() -> AdminAction {
+    AdminAction::Sync(crate::ipc::protocol::SyncTarget {
+        source_id: None,
+        force: false,
+    })
+}
+
+fn status_of(bed: &Bed) -> Result<SourceStatus, String> {
+    bed.service
+        .sources()
+        .into_iter()
+        .find(|source| source.source_id == SOURCE)
+        .ok_or_else(|| "no source in the status".to_owned())
+}
+
+#[test]
+fn n027_the_status_names_the_other_source_and_what_apt_does_not_keep() -> TestResult {
+    use crate::apt::policy::{Finding, Notice};
+    use crate::ipc::protocol::{AptProblem, UpdateElsewhere};
+    let pipeline = FakePipeline::default();
+    let bed = added(false, &pipeline)?;
+    *pipeline.apt.lock().unwrap_or_else(PoisonError::into_inner) = Ok(BTreeMap::from([(
+        SOURCE.to_owned(),
+        SourceAptView {
+            updates_elsewhere: vec![Notice {
+                name: "sampleapp".to_owned(),
+                version: "1.1-1".to_owned(),
+                source: "http://deb.debian.org/debian-security bookworm-security/main".to_owned(),
+            }],
+            problems: vec![Finding::NotProtected {
+                name: "sampleapp-data".to_owned(),
+                candidate: Some("2.0-1".to_owned()),
+                priority: Some(500),
+            }],
+        },
+    )]));
+    let plan = bed.service.plan(&sync_all()).map_err(|r| r.message)?;
+    bed.service
+        .run(&sync_all(), &plan)
+        .map_err(|outcome| outcome.message)?;
+    let status = status_of(&bed)?;
+    assert_eq!(
+        status.updates_elsewhere,
+        [UpdateElsewhere {
+            name: "sampleapp".to_owned(),
+            version: "1.1-1".to_owned(),
+            offered_by: "http://deb.debian.org/debian-security bookworm-security/main".to_owned(),
+        }]
+    );
+    let [
+        AptProblem {
+            name: Some(name),
+            reason_code: Some(code),
+            message,
+        },
+    ] = status.apt_problems.as_slice()
+    else {
+        return Err(format!("{:?}", status.apt_problems).into());
+    };
+    assert_eq!(
+        (name.as_str(), *code),
+        (
+            "sampleapp-data",
+            crate::error::ReasonCode::EAdminApplyFailed
+        )
+    );
+    assert!(message.contains("2.0-1"), "{message}");
+    Ok(())
+}
+
+#[test]
+fn apt_that_cannot_be_asked_is_shown_and_not_taken_for_kept_promises() -> TestResult {
+    use crate::ipc::protocol::AptProblem;
+    let pipeline = FakePipeline::default();
+    let bed = added(false, &pipeline)?;
+    *pipeline.apt.lock().unwrap_or_else(PoisonError::into_inner) =
+        Err("apt-cache: E: The package lists are broken".to_owned());
+    let plan = bed.service.plan(&sync_all()).map_err(|r| r.message)?;
+    bed.service
+        .run(&sync_all(), &plan)
+        .map_err(|outcome| outcome.message)?;
+    let status = status_of(&bed)?;
+    assert!(
+        matches!(
+            status.apt_problems.as_slice(),
+            [AptProblem { name: None, reason_code: None, message }]
+                if message.contains("package lists are broken")
+        ),
+        "{:?}",
+        status.apt_problems
+    );
+    Ok(())
+}
+
+// ------------------------------- pins only where APT can keep them (ADR-022 p.1)
+
+#[test]
+fn a_held_pin_tells_the_administrator_what_to_do_next() -> TestResult {
+    use crate::apt::policy::{Finding, Held};
+    use crate::sync::publish::HeldFamily;
+    let pipeline = FakePipeline::default();
+    let bed = added(false, &pipeline)?;
+    *pipeline.held.lock().unwrap_or_else(PoisonError::into_inner) = vec![HeldFamily {
+        source_id: SOURCE.to_owned(),
+        members: ["sampleapp".to_owned()].into_iter().collect(),
+        held: Held::NotListed {
+            name: "sampleapp".to_owned(),
+        },
+    }];
+    let plan = bed.service.plan(&sync_all()).map_err(|r| r.message)?;
+    // Waiting for `apt update` is the expected next step, not a failure.
+    let outcome = bed
+        .service
+        .run(&sync_all(), &plan)
+        .map_err(|outcome| outcome.message)?;
+    assert!(
+        outcome.message.contains("run apt update, then pchi sync"),
+        "{}",
+        outcome.message
+    );
+    assert!(
+        outcome.reason_codes.is_empty(),
+        "{:?}",
+        outcome.reason_codes
+    );
+    // An equal version elsewhere is a hold with its reason.
+    *pipeline.held.lock().unwrap_or_else(PoisonError::into_inner) = vec![HeldFamily {
+        source_id: SOURCE.to_owned(),
+        members: ["sampleapp".to_owned(), "sampleapp-data".to_owned()]
+            .into_iter()
+            .collect(),
+        held: Held::Ambiguous(Finding::EqualVersionElsewhere {
+            name: "sampleapp-data".to_owned(),
+            version: "1.0-1".to_owned(),
+            other: "http://deb.debian.org/debian-security bookworm-security/main".to_owned(),
+        }),
+    }];
+    let plan = bed.service.plan(&sync_all()).map_err(|r| r.message)?;
+    let outcome = bed
+        .service
+        .run(&sync_all(), &plan)
+        .map_err(|outcome| outcome.message)?;
+    assert!(
+        outcome
+            .message
+            .contains("sampleapp-data 1.0-1 is also offered by http://deb.debian.org"),
+        "{}",
+        outcome.message
+    );
+    assert_eq!(
+        outcome.reason_codes,
+        [crate::error::ReasonCode::ESourceAmbiguous]
+    );
+    Ok(())
+}
+
+#[test]
+fn sync_force_checks_every_release_again_and_the_plan_says_so() -> TestResult {
+    // ADR-037 point 1: between full checks the evidence of the same bytes
+    // is reused; `--force` is the administrator's way to ask again now.
+    let pipeline = FakePipeline::default();
+    let bed = added(false, &pipeline)?;
+    let force = AdminAction::Sync(crate::ipc::protocol::SyncTarget {
+        source_id: None,
+        force: true,
+    });
+    let plan = bed.service.plan(&force).map_err(|r| r.message)?;
+    assert!(
+        plan.summary
+            .contains("evidence of every release is checked again"),
+        "{}",
+        plan.summary
+    );
+    bed.service
+        .run(&force, &plan)
+        .map_err(|outcome| outcome.message)?;
+    assert_eq!(
+        pipeline.calls(),
+        [format!("sync {SOURCE} --force"), "configure".to_owned()]
+    );
+    let plan = bed.service.plan(&sync_all()).map_err(|r| r.message)?;
+    assert!(!plan.summary.contains("checked again"), "{}", plan.summary);
+    Ok(())
+}
+
+// ------------------------------------------- Pinned (ADR-027, P2-011b)
+
+fn allow_pinned() -> AdminAction {
+    AdminAction::SourceAllowPinned(crate::ipc::protocol::SourceAllowPinned {
+        source_id: SOURCE.to_owned(),
+    })
+}
+
+fn approve(release_id: u64) -> AdminAction {
+    AdminAction::ReleaseApprove(crate::ipc::protocol::ReleaseApprove {
+        source_id: SOURCE.to_owned(),
+        release_id,
+    })
+}
+
+#[test]
+fn n040_pinned_consent_names_the_risk_and_is_given_once() -> TestResult {
+    let pipeline = FakePipeline::default();
+    let bed = added(false, &pipeline)?;
+    let plan = bed.service.plan(&allow_pinned()).map_err(|r| r.message)?;
+    assert!(
+        plan.summary.contains(
+            "a compromised publisher account, token, or CI can publish a malicious release"
+        ),
+        "{}",
+        plan.summary
+    );
+    assert!(!status_of(&bed)?.pinned_consent, "a plan changes nothing");
+    bed.service
+        .run(&allow_pinned(), &plan)
+        .map_err(|outcome| outcome.message)?;
+    assert!(status_of(&bed)?.pinned_consent);
+    assert!(bed.service.plan(&allow_pinned()).is_err(), "once");
+    Ok(())
+}
+
+#[test]
+fn n040_a_release_is_approved_by_its_exact_digests_and_only_after_consent() -> TestResult {
+    let pipeline = FakePipeline::default();
+    let bed = added(false, &pipeline)?;
+    let refused = bed.service.plan(&approve(1));
+    assert!(
+        matches!(&refused, Err(r) if r.message.contains("pchi source allow-pinned")),
+        "{refused:?}"
+    );
+    let plan = bed.service.plan(&allow_pinned()).map_err(|r| r.message)?;
+    bed.service
+        .run(&allow_pinned(), &plan)
+        .map_err(|outcome| outcome.message)?;
+    let unknown = bed.service.plan(&approve(1));
+    assert!(
+        matches!(&unknown, Err(r) if r.message.contains("pchi sync")),
+        "{unknown:?}"
+    );
+    synchronized(&bed, &["sampleapp"])?;
+    let plan = bed.service.plan(&approve(1)).map_err(|r| r.message)?;
+    let digest = crate::cas::Sha256Digest::of(b"sampleapp").to_hex();
+    assert_eq!(
+        plan.changes,
+        [PlanChange {
+            kind: ChangeKind::ApproveRelease,
+            target: "sampleapp_1.0-1_all.deb".to_owned(),
+            before: None,
+            after: Some(digest.clone()),
+            risks: Vec::new(),
+        }]
+    );
+    assert!(plan.summary.contains("v1.0"), "{}", plan.summary);
+    bed.service
+        .run(&approve(1), &plan)
+        .map_err(|outcome| outcome.message)?;
+    {
+        let mut owner = bed
+            .service
+            .owner
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let approved = owner.approved_digests(SOURCE, &format!("{SOURCE}-release-1"))?;
+        assert_eq!(approved.into_iter().collect::<Vec<_>>(), [digest]);
+    }
+    // The approval publishes through a synchronization of the source.
+    assert_eq!(
+        pipeline.calls(),
+        [format!("sync {SOURCE}"), "configure".to_owned()]
+    );
+    assert!(bed.service.plan(&approve(1)).is_err(), "nothing left");
+    Ok(())
+}
+
+#[test]
+fn an_approval_confirmed_for_other_bytes_approves_nothing() -> TestResult {
+    let pipeline = FakePipeline::default();
+    let bed = added(false, &pipeline)?;
+    let plan = bed.service.plan(&allow_pinned()).map_err(|r| r.message)?;
+    bed.service
+        .run(&allow_pinned(), &plan)
+        .map_err(|outcome| outcome.message)?;
+    synchronized(&bed, &["sampleapp"])?;
+    let mut plan = bed.service.plan(&approve(1)).map_err(|r| r.message)?;
+    // What the administrator confirmed is not what the server holds now.
+    plan.changes[0].after = Some(crate::cas::Sha256Digest::of(b"other").to_hex());
+    let stale = bed.service.run(&approve(1), &plan);
+    assert!(
+        matches!(&stale, Err(outcome) if outcome.message.contains("changed since the plan")),
+        "{stale:?}"
+    );
+    let mut owner = bed
+        .service
+        .owner
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    assert!(
+        owner
+            .approved_digests(SOURCE, &format!("{SOURCE}-release-1"))?
+            .is_empty()
+    );
+    Ok(())
+}
+
+#[test]
+fn a_source_with_pinned_consent_is_never_activated_as_preferred() -> TestResult {
+    let pipeline = FakePipeline::default();
+    let bed = added(false, &pipeline)?;
+    synchronized(&bed, &["sampleapp"])?;
+    let plan = bed.service.plan(&allow_pinned()).map_err(|r| r.message)?;
+    bed.service
+        .run(&allow_pinned(), &plan)
+        .map_err(|outcome| outcome.message)?;
+    let preferred = AdminAction::SourceActivate(SourceActivate {
+        source_id: SOURCE.to_owned(),
+        packages: vec!["sampleapp".to_owned()],
+        policy: ActivationPolicy::Preferred,
+    });
+    let refused = bed.service.plan(&preferred);
+    assert!(
+        matches!(&refused, Err(r) if r.message.contains("--policy supplemental")),
+        "{refused:?}"
+    );
+    assert!(bed.service.plan(&activate(&["sampleapp"])).is_ok());
+    Ok(())
+}
+
+#[test]
+fn a_release_waiting_for_approval_names_the_command_that_approves_it() {
+    use crate::sync::{ArtifactOutcome, ArtifactReport, SyncReport};
+    let waiting = |filename: &str| ArtifactReport {
+        tag: "v1.0".to_owned(),
+        release_id: 268_800_123,
+        filename: filename.to_owned(),
+        package: None,
+        outcome: ArtifactOutcome::Held(
+            crate::error::ReasonCode::EReleaseApprovalRequired,
+            "approval".to_owned(),
+        ),
+    };
+    let report = SyncReport {
+        source_id: SOURCE.to_owned(),
+        releases: 1,
+        artifacts: vec![waiting("a_1.0_all.deb"), waiting("b_1.0_all.deb")],
+        ..SyncReport::default()
+    };
+    let text = super::pipeline::report_lines(&report);
+    assert_eq!(
+        text.matches(&format!("pchi release approve {SOURCE} 268800123"))
+            .count(),
+        1,
+        "one line per release: {text}"
+    );
 }

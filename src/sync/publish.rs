@@ -18,6 +18,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use super::LevelPublisher;
 use crate::apt::config::{Desired, LogicalSource, SourceConfig};
 use crate::apt::operation::{Applier, Ended, OperationError, apply_apt};
+use crate::apt::policy::{Family, Held, OurRepository, PackagePolicy, pins_to_write};
 use crate::cas::Store;
 use crate::error::ReasonCode;
 use crate::family::{MemberKey, NativeVersion};
@@ -210,4 +211,92 @@ fn record_journal(owner: &mut StateOwner, desired: &Desired, at: &str) -> Result
         owner.set_source_activity(source, !names.is_empty())?;
     }
     Ok(())
+}
+
+/// An activated family whose pin is not written yet, and why.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HeldFamily {
+    pub source_id: String,
+    pub members: BTreeSet<String>,
+    pub held: Held,
+}
+
+/// Drops the pins of `desired` that APT cannot be trusted with yet
+/// (ADR-022 point 1, P3-002a), source by source, as `policies` (what APT
+/// shows for the activated names) allows:
+///
+/// The members of a family are the pinned ones (`pinned_before`: the open
+/// activations) and the new ones:
+///
+/// - another source offering a version equal to a pinned member's holds
+///   the whole family (`E_SOURCE_AMBIGUOUS`): that pin would raise a
+///   version whose file may come from the other source;
+/// - a pinned member keeps its pin while APT does not list its repository
+///   yet, so that installed names stay protected until APT reads the new
+///   lists;
+/// - the new members are pinned together or not at all: one of them that
+///   APT does not list yet (equality cannot be ruled out) or that has an
+///   equal version elsewhere holds all new members, and the pinned ones
+///   keep their pins (ADR-037 point 2). A family with no pinned member is
+///   thus pinned whole or not at all.
+pub fn gate_pins(
+    desired: &mut Desired,
+    policies: &[PackagePolicy],
+    pinned_before: &BTreeMap<String, BTreeSet<String>>,
+) -> Vec<HeldFamily> {
+    let port = desired.port;
+    let none = BTreeSet::new();
+    let mut held = Vec::new();
+    for source in &mut desired.sources {
+        let before = pinned_before.get(&source.source_key).unwrap_or(&none);
+        let families = |pinned: bool| -> Vec<Family> {
+            source
+                .repositories
+                .iter()
+                .map(|repository| Family {
+                    repository: OurRepository::new(port, &repository.label),
+                    members: repository
+                        .activated
+                        .iter()
+                        .filter(|name| before.contains(*name) == pinned)
+                        .cloned()
+                        .collect(),
+                })
+                .filter(|family| !family.members.is_empty())
+                .collect()
+        };
+        let (_, pinned_reasons) = pins_to_write(policies, &families(true));
+        let (_, new_reasons) = pins_to_write(policies, &families(false));
+        let ambiguous_pinned = pinned_reasons
+            .into_iter()
+            .map(|(_, reason)| reason)
+            .find(|reason| matches!(reason, Held::Ambiguous(_)));
+        let (reason, keep_pinned) = match (ambiguous_pinned, new_reasons.into_iter().next()) {
+            (Some(reason), _) => (reason, false),
+            (None, Some((_, reason))) => (reason, true),
+            (None, None) => continue,
+        };
+        let mut members = BTreeSet::new();
+        for repository in &mut source.repositories {
+            let (kept, dropped): (BTreeSet<String>, BTreeSet<String>) =
+                std::mem::take(&mut repository.activated)
+                    .into_iter()
+                    .partition(|name| keep_pinned && before.contains(name));
+            repository.activated = kept;
+            members.extend(dropped);
+        }
+        held.push(HeldFamily {
+            source_id: source.source_key.clone(),
+            members,
+            held: reason,
+        });
+    }
+    held
+}
+
+/// How a configuration step ended, and the families it did not pin.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Configured {
+    pub ended: Ended,
+    pub held: Vec<HeldFamily>,
 }

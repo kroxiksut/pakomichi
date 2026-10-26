@@ -120,9 +120,13 @@ impl StateOwner {
         source_id: &str,
     ) -> Result<Vec<PublishedArtifact>, StateError> {
         let mut statement = self.connection().prepare(
-            "SELECT a.ecosystem, a.native_name, a.native_version, a.architecture, e.evidence_type \
-             FROM artifact a JOIN trust_evidence e ON e.id = a.evidence_id \
+            // The level is the evidence's, or Pinned for an approved
+            // release (ADR-027 point 8); the schema allows one, never both.
+            "SELECT a.ecosystem, a.native_name, a.native_version, a.architecture, \
+             CASE WHEN a.approval_id IS NOT NULL THEN 'pinned' ELSE e.evidence_type END \
+             FROM artifact a LEFT JOIN trust_evidence e ON e.id = a.evidence_id \
              WHERE a.source_id = ?1 AND a.state = 'published' \
+             AND (a.evidence_id IS NOT NULL OR a.approval_id IS NOT NULL) \
              ORDER BY a.native_name, a.native_version",
         )?;
         let rows = statement.query_map([source_id], |row| {
@@ -148,6 +152,43 @@ impl StateOwner {
             });
         }
         Ok(published)
+    }
+
+    /// The digests recorded for each file name of each release (by the
+    /// forge's release ID), except rejected ones. GitHub replaces an asset
+    /// by deleting it and uploading another file of the same name, which
+    /// gets a new asset ID (R-003 step 3), so other bytes under a recorded
+    /// name are a replaced asset too (ADR-005).
+    pub fn recorded_release_file_digests(
+        &mut self,
+        source_id: &str,
+    ) -> Result<BTreeMap<(u64, String), BTreeSet<Sha256Digest>>, StateError> {
+        let mut statement = self.connection().prepare(
+            "SELECT r.forge_release_id, a.filename, a.sha256 FROM artifact a \
+             JOIN release_record r ON r.id = a.release_id AND r.source_id = a.source_id \
+             WHERE a.source_id = ?1 AND a.state <> 'rejected'",
+        )?;
+        let rows = statement.query_map([source_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+        let mut digests: BTreeMap<(u64, String), BTreeSet<Sha256Digest>> = BTreeMap::new();
+        for row in rows {
+            let (release, filename, sha256) = row?;
+            let release = release
+                .parse::<u64>()
+                .map_err(|_| corrupt("release_record", "forge_release_id"))?;
+            let sha256 =
+                Sha256Digest::from_hex(&sha256).map_err(|_| corrupt("artifact", "sha256"))?;
+            digests
+                .entry((release, filename))
+                .or_default()
+                .insert(sha256);
+        }
+        Ok(digests)
     }
 
     /// The digests recorded for each asset of the source, except rejected

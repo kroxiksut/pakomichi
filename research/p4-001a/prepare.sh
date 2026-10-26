@@ -8,6 +8,7 @@
 # root. The local metadata key is created by and for pakomichi-signer; its
 # public part is exported for the state owner (gpgv) and, through the
 # applier, for APT. Run as root with the harness in /opt/p4001a.
+# PAKOMICHI_PORT: the reader's port (default 18080, as recorded).
 set -euo pipefail
 # shellcheck source=lib.sh
 source /opt/p4001a/lib.sh
@@ -16,6 +17,13 @@ source /opt/p4001a/lib.sh
 
 install -m 0755 /opt/p4001a/bin/* /usr/local/bin/
 install -m 0644 /opt/p4001a/units/* /etc/systemd/system/
+# The reader's loopback port: 18080 in the recorded P4-001a runs; later
+# beds (P3-007a) set PAKOMICHI_PORT to the default 879 (ADR-036 point 2).
+port=${PAKOMICHI_PORT:-18080}
+if [[ $port != 18080 ]]; then
+    sed -i "s/127.0.0.1:18080/127.0.0.1:$port/" /etc/systemd/system/pakomichi-reader.socket
+    sed -i "s/--loopback-port 18080/--loopback-port $port/" /etc/systemd/system/pakomichi-state.service
+fi
 
 for user in pakomichi pakomichi-signer; do
     getent group "$user" >/dev/null || groupadd --system "$user"

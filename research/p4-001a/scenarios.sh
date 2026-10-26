@@ -29,40 +29,55 @@ run status pchi status
 [[ $rc -eq 0 && $out == *"no sources"* ]]
 expect S01-status-empty $? "exit $rc"
 
+api_budget
 run add-yes pchi source add "$URL" --yes
 [[ $rc -eq 2 ]]
 expect S02-yes-is-refused $? "exit $rc"
 
+api_budget
 run add-no-tty pchi source add "$URL" </dev/null
 [[ $rc -eq 3 ]] && ! pchi source list | grep -q "$SOURCE"
 expect S03-no-terminal-changes-nothing $? "exit $rc"
 
+api_budget
 run add confirm pchi source add "$URL"
 signer=$(pchi source list | grep -o 'signer=[^ ]*')
 [[ $rc -eq 0 && $signer == signer=.github/workflows/* ]]
 expect S04-add-confirms-the-signer $? "exit $rc; $signer"
 
+api_budget
 run activate-early pchi source activate "$SOURCE" --packages "$PACKAGE" </dev/null
 [[ $rc -eq 1 && $out == *"pchi sync $SOURCE first"* ]]
 expect S05-activate-needs-a-sync $? "exit $rc"
 
+api_budget
 run sync confirm pchi sync "$SOURCE"
 [[ $rc -eq 0 && -z "$(ours)" ]]
 expect S06-sync-proposes-and-publishes-nothing $? "exit $rc; files: $(ours | tr '\n' ' ')"
 
+api_budget
 run activate-unknown pchi source activate "$SOURCE" --packages "$PACKAGE-tools" </dev/null
 [[ $rc -eq 1 && $out == *"never offered"* ]]
 expect S07-unknown-name-is-refused $? "exit $rc"
 
+# Since 2026-10-25 (ADR-022 point 1, owner decision) the activation
+# publishes and the pin waits until APT lists the name; the run recorded on
+# 2026-10-24 pinned at activation.
+api_budget
 run activate confirm pchi source activate "$SOURCE" --packages "$PACKAGE"
 pref=/etc/apt/preferences.d/pakomichi-$SOURCE.pref
-pinned=$(grep -h '^Package:\|^Pin:' "$pref" 2>/dev/null | tr '\n' ' ')
-[[ $rc -eq 0 && $pinned == *"Package: $PACKAGE"*"l=pakomichi-$SOURCE-attested"* ]]
-expect S08-activate-publishes-and-pins $? "exit $rc; $pinned"
+[[ $rc -eq 0 && ! -e $pref && $out == *"run apt update, then pchi sync"* ]]
+expect S08-activate-publishes-and-the-pin-waits $? "exit $rc"
 
 run apt-update apt-get update
 [[ $rc -eq 0 && $out != *"W: "* && $out != *"E: "* ]]
 expect S09-apt-update-is-clean $? "exit $rc"
+
+api_budget
+run sync-pin confirm pchi sync "$SOURCE"
+pinned=$(grep -h '^Package:\|^Pin:' "$pref" 2>/dev/null | tr '\n' ' ')
+[[ $rc -eq 0 && $pinned == *"Package: $PACKAGE"*"l=pakomichi-$SOURCE-attested"* ]]
+expect S09b-sync-pins-once-apt-lists-it $? "exit $rc; $pinned"
 
 run policy apt-cache policy "$PACKAGE"
 candidate=$(awk '/Candidate:/ {print $2}' <<<"$out")
@@ -81,6 +96,7 @@ run status-after pchi status
 [[ $out == *"activated=$PACKAGE"* ]]
 expect S12-status-shows-the-activation $? "$(grep "$SOURCE" <<<"$out")"
 
+api_budget
 run sync-again confirm pchi sync
 [[ $rc -eq 0 && $out == *"APT configuration unchanged"* ]]
 expect S13-second-sync-changes-nothing $? "exit $rc"

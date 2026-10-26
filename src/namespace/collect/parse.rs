@@ -31,12 +31,26 @@ pub struct Profile {
     pub repos_package: Option<&'static str>,
 }
 
-pub const PROFILES: [Profile; 4] = [
+pub const PROFILES: [Profile; 6] = [
     Profile {
         os_id: "debian",
         version_prefix: "12",
         family: Family::Apt,
         key_package: "debian-archive-keyring",
+        repos_package: None,
+    },
+    Profile {
+        os_id: "debian",
+        version_prefix: "13",
+        family: Family::Apt,
+        key_package: "debian-archive-keyring",
+        repos_package: None,
+    },
+    Profile {
+        os_id: "ubuntu",
+        version_prefix: "24.04",
+        family: Family::Apt,
+        key_package: "ubuntu-keyring",
         repos_package: None,
     },
     Profile {

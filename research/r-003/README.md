@@ -355,6 +355,45 @@ Observations:
    pchi-test-org/pchi-test-renamed network`: the step 5 fork
    `kroxiksut/pchi-test-fork` is in the same fork network. The phase
    `run-owner.sh step4 transfer-back` exists but has not run.
+6. **Re-attesting after the transfer does not restore the old provenance**
+   (2026-10-25, after a community answer in GitHub discussion 211055
+   suggested it). Three days after the transfer the lookups were unchanged
+   (repository ID and organization 404, `users/kroxiksut` two attestations
+   of `1429109739`). A workflow `.github/workflows/reattest.yml` added to
+   `pchi-test-org/pchi-test-renamed` (commit `e2e658d1…`) downloaded the
+   `v0.1.0` asset and ran `actions/attest-build-provenance` v4.2.2 over it
+   (run `40195307476`). Afterwards `repositories/1429109739/attestations/…`
+   and `orgs/pchi-test-org/attestations/…` return one attestation, the new
+   one; the user endpoint still returns the two old ones. The new
+   provenance names the workflow `reattest.yml@refs/heads/main`, the commit
+   `e2e658d1…`, and the organization's owner ID `346117935` — not the
+   confirmed signer workflow and not the commit `6ee0f9f5…` the `v0.1.0`
+   tag points to. Dispatching the workflow at the tag is refused (HTTP 422
+   "Workflow does not have 'workflow_dispatch' trigger", because the file
+   does not exist at that commit). Under ADR-030/ADR-036 such a provenance
+   is `workflow_mismatch` and a commit mismatch for the old release: it
+   shows that a workflow of the repository saw the bytes later, not what
+   they were built from. The lookup order of ADR-034 point 2 (earlier
+   owners) and the stored bundles stay the way to keep old releases.
+7. **A transfer back to the original owner makes the old attestations
+   reachable again** (2026-10-25, after the owner deleted the fork). `POST
+   repos/pchi-test-org/pchi-test-renamed/transfer -f new_owner=kroxiksut`
+   succeeded; the repository is `kroxiksut/pchi-test-renamed` again, owner
+   ID `2264172`. Right afterwards `repositories/1429109739/attestations/…`
+   returns the two original attestations again, while the re-attestation of
+   observation 6, made while the organization owned the repository, is no
+   longer listed there and only `orgs/pchi-test-org/attestations/…` returns
+   it. `run-owner.sh step4 transfer-back` (12 cases, none unexpected, token
+   in no file; `results/owner-step4-transfer-back-*.tsv`, raw data
+   `.research-local/r-003/owner-step4-transfer-back-20261025T142106Z/`):
+   `gh release verify v0.1.0` passes again under the current name and
+   through the organization's old name (redirect); `gh attestation verify
+   --repo` passes offline with the original name `kroxiksut/pchi-test` and
+   fails with the current name, because the certificate names the
+   repository as it was at signing time. Attestations stay with the account
+   that owned the repository when they were made, and every lookup is
+   scoped to the current owner; verification has to bind the repository
+   and owner IDs, never the current name.
 
 ### Name capture (2026-10-23)
 

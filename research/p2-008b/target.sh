@@ -61,6 +61,25 @@ if [[ "${P2008B_VENDOR:-}" == pgdg ]]; then
         "PAKOMICHI_VENDOR_NEWER=libpq5 (>= 17)")
 fi
 
+if [[ "${P2008B_VENDOR:-}" == copy ]]; then
+    # The distribution's own archive from another mirror, signed by a copy of
+    # the distribution keyring that no package owns (P2-014): the names and
+    # the key are the distribution's, the ownership is not.
+    . /etc/os-release
+    case "$ID" in
+    debian) mirror=http://ftp.debian.org/debian keyring=/usr/share/keyrings/debian-archive-keyring.gpg ;;
+    ubuntu) mirror=http://mirrors.edge.kernel.org/ubuntu keyring=/usr/share/keyrings/ubuntu-archive-keyring.gpg ;;
+    *) echo "no copy source for $ID" >&2; exit 3 ;;
+    esac
+    install -d -m 0755 /etc/apt/keyrings
+    cp "$keyring" /etc/apt/keyrings/copy-of-distribution.gpg
+    printf 'Types: deb\nURIs: %s\nSuites: %s\nComponents: main\nSigned-By: /etc/apt/keyrings/copy-of-distribution.gpg\n' \
+        "$mirror" "$VERSION_CODENAME" >/etc/apt/sources.list.d/copy-of-distribution.sources
+    apt-get -q update >/dev/null
+    printf 'vendor\tcopy %s %s, keyring copied from %s\n' "$mirror" "$VERSION_CODENAME" "$keyring" >>"$out/environment.tsv"
+    vendor_env=("PAKOMICHI_NS_EXPECT_FOREIGN=${mirror#http://}")
+fi
+
 getent passwd p2008b >/dev/null || useradd --create-home --shell /bin/bash p2008b
 chmod 0755 "$binary"
 status=0

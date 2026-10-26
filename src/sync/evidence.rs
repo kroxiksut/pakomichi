@@ -19,7 +19,7 @@ use crate::attest::{
     SLSA_PROVENANCE_V1,
 };
 use crate::cas::Sha256Digest;
-use crate::github::{ExpectedRelease, GitHubClient, PinnedRepository, Release, Transport};
+use crate::github::{ExpectedRelease, GitHubClient, OwnerId, PinnedRepository, Release, Transport};
 use crate::policy::level::{Level, Verified};
 
 /// [`EvidenceCheck`] over the GitHub API and the production verifier.
@@ -28,6 +28,15 @@ pub struct GitHubEvidence<'a, T> {
     /// `None` when the trusted roots are not available: nothing verifies.
     pub verifier: Option<Arc<AttestationVerifier>>,
     pub runtime: Handle,
+}
+
+/// The bytes of the bundle that verified, as GitHub sent them.
+fn verified_bundle(bundles: &[Vec<u8>], sha256: Sha256Digest) -> Result<Vec<u8>, String> {
+    bundles
+        .iter()
+        .find(|bundle| Sha256Digest::of(bundle) == sha256)
+        .cloned()
+        .ok_or_else(|| "the verified bundle is not among the bundles received".to_owned())
 }
 
 fn record_json(fields: serde_json::Value) -> String {
@@ -42,15 +51,52 @@ impl<T: Transport> EvidenceCheck for GitHubEvidence<'_, T> {
         asset_name: &str,
         sha256: Sha256Digest,
         signer: Option<&AttestedSigner>,
+        earlier_owners: &[OwnerId],
+    ) -> Result<Checked, String> {
+        if self.verifier.is_none() {
+            return Ok(Checked::nothing("the trusted roots are not available"));
+        }
+        let bundles = self
+            .runtime
+            .block_on(self.github.attestation_bundles_after_transfer(
+                pinned.repository_id(),
+                &sha256,
+                earlier_owners,
+            ))
+            .map_err(|error| format!("GitHub: {error}"))?;
+        self.verify_bundles(pinned, release, asset_name, sha256, signer, &bundles)
+    }
+
+    fn reverify(
+        &self,
+        pinned: &PinnedRepository,
+        release: &Release,
+        asset_name: &str,
+        sha256: Sha256Digest,
+        signer: Option<&AttestedSigner>,
+        bundles: &[Vec<u8>],
+    ) -> Result<Checked, String> {
+        self.verify_bundles(pinned, release, asset_name, sha256, signer, bundles)
+    }
+}
+
+impl<T: Transport> GitHubEvidence<'_, T> {
+    /// The full verification of `bundles`, wherever they came from: the
+    /// forge now, or the blob store (ADR-034 point 1). The tag reference
+    /// and the commit are still read from the forge by repository ID.
+    fn verify_bundles(
+        &self,
+        pinned: &PinnedRepository,
+        release: &Release,
+        asset_name: &str,
+        sha256: Sha256Digest,
+        signer: Option<&AttestedSigner>,
+        bundles: &[Vec<u8>],
     ) -> Result<Checked, String> {
         let Some(verifier) = self.verifier.as_deref() else {
             return Ok(Checked::nothing("the trusted roots are not available"));
         };
         let repository = pinned.repository_id();
-        let bundles = self
-            .runtime
-            .block_on(self.github.attestation_bundles(repository, &sha256))
-            .map_err(|error| format!("GitHub: {error}"))?;
         let slices: Vec<&[u8]> = bundles.iter().map(Vec::as_slice).collect();
         let invalid = |failure: AttestationFailure| Checked {
             verified: Verified::Invalid,
@@ -74,6 +120,7 @@ impl<T: Transport> EvidenceCheck for GitHubEvidence<'_, T> {
                                 signer_identity: crate::attest::RELEASE_SAN.to_owned(),
                                 predicate_type: RELEASE_PREDICATE,
                                 bundle_sha256: evidence.bundle_sha256,
+                                bundle: verified_bundle(bundles, evidence.bundle_sha256)?,
                                 record_json: record_json(serde_json::json!({
                                     "owner_id": evidence.owner_id,
                                     "signed_at": evidence.signed_at,
@@ -110,6 +157,7 @@ impl<T: Transport> EvidenceCheck for GitHubEvidence<'_, T> {
                     signer_identity: evidence.signer.clone(),
                     predicate_type: SLSA_PROVENANCE_V1,
                     bundle_sha256: evidence.bundle_sha256,
+                    bundle: verified_bundle(bundles, evidence.bundle_sha256)?,
                     record_json: record_json(serde_json::json!({
                         "owner_id": evidence.owner_id,
                         "signed_at": evidence.signed_at,

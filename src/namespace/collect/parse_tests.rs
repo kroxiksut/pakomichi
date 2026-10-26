@@ -4,6 +4,10 @@ use super::*;
 
 const DEBIAN_OS_RELEASE: &str =
     "PRETTY_NAME=\"Debian GNU/Linux 12 (bookworm)\"\nVERSION_ID=\"12\"\nID=debian\n";
+const DEBIAN13_OS_RELEASE: &str =
+    "PRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"\nVERSION_ID=\"13\"\nID=debian\n";
+const UBUNTU2404_OS_RELEASE: &str =
+    "PRETTY_NAME=\"Ubuntu 24.04.3 LTS\"\nID=ubuntu\nID_LIKE=debian\nVERSION_ID=\"24.04\"\n";
 const ASTRA_OS_RELEASE: &str = "PRETTY_NAME=\"Astra Linux\"\nID=astra\nVERSION_ID=1.8_x86-64\n";
 const ALMA_OS_RELEASE: &str = "ID=\"almalinux\"\nVERSION_ID=\"9.8\"\n";
 const FEDORA_OS_RELEASE: &str = "ID=fedora\nVERSION_ID=44\n";
@@ -12,6 +16,8 @@ const FEDORA_OS_RELEASE: &str = "ID=fedora\nVERSION_ID=44\n";
 fn every_first_target_has_a_profile_and_nothing_else_does() {
     let ids: Vec<Option<&str>> = [
         DEBIAN_OS_RELEASE,
+        DEBIAN13_OS_RELEASE,
+        UBUNTU2404_OS_RELEASE,
         ASTRA_OS_RELEASE,
         ALMA_OS_RELEASE,
         FEDORA_OS_RELEASE,
@@ -23,14 +29,18 @@ fn every_first_target_has_a_profile_and_nothing_else_does() {
         ids,
         vec![
             Some("debian-archive-keyring"),
+            Some("debian-archive-keyring"),
+            Some("ubuntu-keyring"),
             Some("astra-archive-keyring"),
             Some("almalinux-gpg-keys"),
             Some("fedora-gpg-keys"),
         ]
     );
+    // A build is profiled only after the collector ran on it (P2-014).
     for other in [
-        "ID=debian\nVERSION_ID=\"13\"\n",
-        "ID=ubuntu\nVERSION_ID=\"24.04\"\n",
+        "ID=debian\nVERSION_ID=\"14\"\n",
+        "ID=ubuntu\nVERSION_ID=\"26.04\"\n",
+        "ID=ubuntu\nVERSION_ID=\"24.10\"\n",
         "ID=astra\nVERSION_ID=1.7_x86-64\n",
         "ID=fedora\nVERSION_ID=43\n",
         "ID=almalinux\nVERSION_ID=\"10.0\"\n",

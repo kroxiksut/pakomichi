@@ -99,6 +99,24 @@ pub struct SourceActivate {
     pub policy: ActivationPolicy,
 }
 
+/// `pchi source allow-pinned <id>`: Pinned consent for one source
+/// (ADR-027 point 4.1).
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceAllowPinned {
+    pub source_id: String,
+}
+
+/// `pchi release approve <source-id> <release-id>`: approval of the exact
+/// digests of one release of a Pinned source (ADR-027 point 4.2).
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReleaseApprove {
+    pub source_id: String,
+    /// The forge's release ID, as `pchi source inspect` shows it.
+    pub release_id: u64,
+}
+
 /// `pchi sync [<id>] [--force]`.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -114,20 +132,20 @@ pub struct SyncTarget {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AdminAction {
-    /// `pchi doctor --repair`: `systemctl reset-failed` for the units, then
-    /// start the socket (ADR-021 point 3.1).
-    DoctorRepair(Empty),
     SourceAdd(SourceAdd),
     SourceActivate(SourceActivate),
+    SourceAllowPinned(SourceAllowPinned),
+    ReleaseApprove(ReleaseApprove),
     Sync(SyncTarget),
 }
 
 impl AdminAction {
     pub const fn as_str(&self) -> &'static str {
         match self {
-            Self::DoctorRepair(_) => "doctor_repair",
             Self::SourceAdd(_) => "source_add",
             Self::SourceActivate(_) => "source_activate",
+            Self::SourceAllowPinned(_) => "source_allow_pinned",
+            Self::ReleaseApprove(_) => "release_approve",
             Self::Sync(_) => "sync",
         }
     }
@@ -156,8 +174,11 @@ pub enum ChangeKind {
     RemoveFile,
     /// A new generation of a logical repository is published.
     PublishGeneration,
-    /// A systemd unit is reset and started (`doctor --repair`).
-    RepairUnit,
+    /// Pinned consent is recorded for a source (ADR-027 point 4.1).
+    AllowPinned,
+    /// One artifact of a release is approved by its exact SHA-256; `target`
+    /// is the file name, `after` the digest (ADR-027 point 4.2).
+    ApproveRelease,
 }
 
 /// One change of a plan, in its canonical form.
@@ -255,6 +276,32 @@ pub struct SourceStatus {
     pub signer: Option<String>,
     /// Names activated in this source now.
     pub activated: Vec<String>,
+    /// Newer versions of activated names that other sources offer.
+    pub updates_elsewhere: Vec<UpdateElsewhere>,
+    /// Promises APT does not keep now, as of the last operation.
+    pub apt_problems: Vec<AptProblem>,
+}
+
+/// A newer version of an activated name in another source, including a
+/// distribution security update: the publisher stays, and switching is
+/// the user's decision (ADR-022 point 3).
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateElsewhere {
+    pub name: String,
+    pub version: String,
+    /// The other source as APT names it: URI and suite.
+    pub offered_by: String,
+}
+
+/// A promise of a source that APT does not keep now, or why APT's choice
+/// could not be read (then `name` and `reason_code` are absent).
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AptProblem {
+    pub name: Option<String>,
+    pub reason_code: Option<ReasonCode>,
+    pub message: String,
 }
 
 /// What the server reports about itself and the sources it keeps.
@@ -263,6 +310,10 @@ pub struct SourceStatus {
 pub struct StatusReport {
     pub service_version: String,
     pub operations_running: u32,
+    /// The loopback port the APT sources name; absent when the service runs
+    /// without the synchronization pipeline. `pchi doctor` compares it with
+    /// the reader socket's port (ADR-036 point 2).
+    pub loopback_port: Option<u16>,
     pub sources: Vec<SourceStatus>,
 }
 

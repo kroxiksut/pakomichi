@@ -19,7 +19,7 @@ use crate::error::ReasonCode;
 
 /// The schema version this build writes; `PRAGMA user_version` after the
 /// last migration.
-pub const SCHEMA_VERSION: i64 = 5;
+pub const SCHEMA_VERSION: i64 = 7;
 
 struct Migration {
     version: i64,
@@ -28,7 +28,7 @@ struct Migration {
 }
 
 /// Forward-only migrations in order (`migrations/README.md`).
-const MIGRATIONS: [Migration; 5] = [
+const MIGRATIONS: [Migration; 7] = [
     Migration {
         version: 1,
         name: "initial",
@@ -53,6 +53,16 @@ const MIGRATIONS: [Migration; 5] = [
         version: 5,
         name: "family_membership",
         sql: include_str!("../../migrations/0005_family_membership.sql"),
+    },
+    Migration {
+        version: 6,
+        name: "evidence_full_check",
+        sql: include_str!("../../migrations/0006_evidence_full_check.sql"),
+    },
+    Migration {
+        version: 7,
+        name: "evidence_bundle",
+        sql: include_str!("../../migrations/0007_evidence_bundle.sql"),
     },
 ];
 
@@ -107,6 +117,10 @@ pub enum StateError {
     },
     /// A family revision older than the stored one.
     StaleRevision,
+    /// The evidence is not recorded for this source.
+    UnknownEvidence,
+    /// Evidence names at most 16 bundles (ADR-030, migration 0007).
+    TooManyBundles,
     Sqlite(rusqlite::Error),
     Io(io::Error),
 }
@@ -159,6 +173,10 @@ impl fmt::Display for StateError {
             }
             Self::SourceExists { id } => write!(formatter, "the repository is already source {id}"),
             Self::StaleRevision => formatter.write_str("the family has a newer revision"),
+            Self::UnknownEvidence => {
+                formatter.write_str("the evidence is not recorded for this source")
+            }
+            Self::TooManyBundles => formatter.write_str("evidence names at most 16 bundles"),
             Self::Sqlite(error) => write!(formatter, "SQLite error: {error}"),
             Self::Io(error) => write!(formatter, "I/O error: {error}"),
         }

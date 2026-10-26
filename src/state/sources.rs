@@ -82,6 +82,50 @@ impl StateOwner {
         Ok(id)
     }
 
+    /// Records the administrator's Pinned consent for `source` (ADR-027
+    /// point 4.1); `false` when it was given before.
+    pub fn grant_pinned_consent(&mut self, source: &str, at: &str) -> Result<bool, StateError> {
+        let changed = self.connection().execute(
+            "UPDATE forge_repository SET pinned_consent_at = ?2 \
+             WHERE id = ?1 AND pinned_consent_at IS NULL",
+            params![source, at],
+        )?;
+        Ok(changed == 1)
+    }
+
+    /// Records a rename of `source` on the forge (ADR-005): the IDs stay,
+    /// the address moves to `current`, and `previous` is kept.
+    pub fn record_rename(
+        &mut self,
+        source: &str,
+        previous: &str,
+        current: &str,
+        at: &str,
+    ) -> Result<(), StateError> {
+        let transaction = self.connection().transaction()?;
+        transaction.execute(
+            "INSERT INTO repository_previous_address (source_id, canonical_url, observed_at) \
+             VALUES (?1, ?2, ?3) ON CONFLICT (source_id, canonical_url) DO NOTHING",
+            params![source, previous, at],
+        )?;
+        transaction.execute(
+            "UPDATE forge_repository SET canonical_url = ?2 WHERE id = ?1",
+            params![source, current],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    /// The earlier addresses of `source`, in the order they were left.
+    pub fn previous_addresses(&mut self, source: &str) -> Result<Vec<String>, StateError> {
+        let mut statement = self.connection().prepare(
+            "SELECT canonical_url FROM repository_previous_address WHERE source_id = ?1 \
+             ORDER BY id",
+        )?;
+        let rows = statement.query_map([source], |row| row.get(0))?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
     /// Records a new confirmed signer of `source`; the earlier ones stay.
     pub fn confirm_signer(
         &mut self,

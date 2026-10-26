@@ -40,3 +40,4 @@ Each ADR contains its rationale, alternatives, consequences, and a reference to 
 - [ADR-034: Attestation evidence after R-003: stored bundles and lookup after a transfer (refines ADR-030)](ADR-034.md)
 - [ADR-035: Process layout: isolated signer and inspector, a lazy-fetch channel for the reader (refines ADR-017, ADR-029)](ADR-035.md)
 - [ADR-036: Source settings confirmed by the administrator: Attested signer, loopback port, family approval (refines ADR-024, ADR-030)](ADR-036.md)
+- [ADR-037: Evidence reuse between synchronizations and holding only new family members (refines ADR-022, ADR-030, ADR-034)](ADR-037.md)

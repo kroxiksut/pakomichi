@@ -19,6 +19,8 @@
 //! - `admin` (Unix only): the intent journal of administrative applies
 //!   (`admin_operation`, P4-003a); an operation left `planned` blocks new
 //!   ones until it is recovered.
+//! - `bundles` (Unix only): the attestation bundles evidence was verified
+//!   from (migration 0007, ADR-034); the collector keeps every one.
 //! - `owners` (Unix only): the confirmed owner IDs of a source (migration
 //!   0002, R-003); a recorded transfer confirmation moves the current owner.
 //!
@@ -30,6 +32,8 @@
 mod activations;
 #[cfg(unix)]
 mod admin;
+#[cfg(unix)]
+mod bundles;
 #[cfg(unix)]
 mod catalog;
 #[cfg(unix)]
@@ -53,7 +57,10 @@ pub use activations::Activation;
 #[cfg(unix)]
 pub use admin::{AptOperation, AptState, Digests, OperationStatus};
 #[cfg(unix)]
-pub use catalog::{ArtifactRow, ArtifactState, EvidenceRow, ReleaseRow};
+pub use catalog::{
+    Accepted, ArtifactRow, ArtifactState, EvidenceRow, RecordedEvidence, ReleaseArtifact,
+    ReleaseRow,
+};
 #[cfg(unix)]
 pub use decisions::{DecisionObject, LoggedDecision, Recorded, Replay, replay};
 pub use floor::{

@@ -150,3 +150,99 @@ fn the_plan_shows_every_change_and_its_risks() {
     );
     assert!(text.contains("plan abababababab"), "{text}");
 }
+
+#[test]
+fn n027_the_status_names_the_other_source_and_every_broken_promise() {
+    use crate::ipc::protocol::{AptProblem, UpdateElsewhere};
+    let source = SourceStatus {
+        source_id: "github-1429307950".to_owned(),
+        url: "https://github.com/kroxiksut/pchi-test".to_owned(),
+        state: "active".to_owned(),
+        trust_floor: Some("attested".to_owned()),
+        pinned_consent: false,
+        last_verified_at: None,
+        signer: None,
+        activated: vec!["sampleapp".to_owned()],
+        updates_elsewhere: vec![UpdateElsewhere {
+            name: "sampleapp".to_owned(),
+            version: "1.1-1".to_owned(),
+            offered_by: "http://deb.debian.org/debian-security bookworm-security/main".to_owned(),
+        }],
+        apt_problems: vec![
+            AptProblem {
+                name: Some("sampleapp-data".to_owned()),
+                reason_code: Some(ReasonCode::ESourceAmbiguous),
+                message: "sampleapp-data 1.0-1 is also offered elsewhere".to_owned(),
+            },
+            AptProblem {
+                name: None,
+                reason_code: None,
+                message: "what APT will choose could not be read".to_owned(),
+            },
+        ],
+    };
+    let text = render_sources(&[source]);
+    assert!(
+        text.contains(
+            "notice: sampleapp 1.1-1 is offered by \
+             http://deb.debian.org/debian-security bookworm-security/main"
+        ),
+        "{text}"
+    );
+    assert!(
+        text.contains("PROBLEM E_SOURCE_AMBIGUOUS: sampleapp-data 1.0-1 is also offered"),
+        "{text}"
+    );
+    assert!(
+        text.contains("PROBLEM: what APT will choose could not be read"),
+        "{text}"
+    );
+}
+
+#[test]
+fn doctor_repair_runs_in_the_cli_and_takes_no_confirmation_from_arguments() -> Result<(), String> {
+    // N-029: the recovery runs as root in the CLI itself, never through the
+    // unprivileged state owner, which may be the unit that is down; the
+    // diagnosis alone changes nothing and takes no confirmation.
+    assert_eq!(parse(&words("doctor"))?, Command::Doctor);
+    assert_eq!(parse(&words("doctor --repair"))?, Command::DoctorRepair);
+    for refused in [
+        "doctor --yes",
+        "doctor --repair --yes",
+        "doctor --yes --repair",
+        "doctor --repair --repair",
+        "doctor now",
+    ] {
+        assert!(parse(&words(refused)).is_err(), "{refused}");
+    }
+    Ok(())
+}
+
+#[test]
+fn pinned_consent_and_approval_take_exactly_their_arguments() -> Result<(), String> {
+    use crate::ipc::protocol::{ReleaseApprove, SourceAllowPinned};
+    assert_eq!(
+        parse(&words("source allow-pinned github-1"))?,
+        Command::Admin(AdminAction::SourceAllowPinned(SourceAllowPinned {
+            source_id: "github-1".to_owned()
+        }))
+    );
+    assert_eq!(
+        parse(&words("release approve github-1 268800123"))?,
+        Command::Admin(AdminAction::ReleaseApprove(ReleaseApprove {
+            source_id: "github-1".to_owned(),
+            release_id: 268_800_123,
+        }))
+    );
+    // No --yes, no tag instead of the release ID, no zero.
+    for refused in [
+        "source allow-pinned github-1 --yes",
+        "release approve github-1 268800123 --yes",
+        "release approve github-1 v1.0",
+        "release approve github-1 0",
+        "release approve github-1",
+    ] {
+        assert!(parse(&words(refused)).is_err(), "{refused}");
+    }
+    Ok(())
+}

@@ -9,7 +9,10 @@
 set -euo pipefail
 
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+# P4001A_BIN: another output directory, so that a build does not replace the
+# binaries a run in progress copies.
 scratch=/mnt/c/temp/pakomichi/p4-001a
+bin_dir=${P4001A_BIN:-$scratch/bin}
 build=/mnt/c/temp/pakomichi/p3-001
 export RUSTUP_HOME="$project_root/.research-local/p0-004/toolchain/rustup"
 export CARGO_HOME=/mnt/c/temp/pakomichi/p3-005a/cargo-home
@@ -22,14 +25,14 @@ cd "$project_root"
 args=()
 for binary in "${binaries[@]}"; do args+=(--bin "$binary"); done
 cargo build --locked --release "${args[@]}"
-rm -rf "$scratch/bin"
-mkdir -p "$scratch/bin"
+rm -rf "$bin_dir"
+mkdir -p "$bin_dir"
 for binary in "${binaries[@]}"; do
-    install -m 0755 "$CARGO_TARGET_DIR/release/$binary" "$scratch/bin/"
+    install -m 0755 "$CARGO_TARGET_DIR/release/$binary" "$bin_dir/"
 done
-for binary in "$scratch"/bin/*; do
+for binary in "$bin_dir"/*; do
     newest=$(readelf -V "$binary" | grep -o 'GLIBC_2\.[0-9]*' | sort -uV | tail -1)
     [[ "$(printf '%s\n' "$newest" GLIBC_2.34 | sort -V | tail -1)" == GLIBC_2.34 ]] ||
         { echo "$binary needs $newest" >&2; exit 1; }
 done
-sha256sum "$scratch"/bin/*
+sha256sum "$bin_dir"/*

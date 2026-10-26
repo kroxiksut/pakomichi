@@ -1,0 +1,21 @@
+E01-add-confirms-the-source	PASS	exit 0; signer=.github/workflows/mutable-attested.yml@refs/heads/main
+E02-first-sync	PASS	exit 0
+E03-activate-publishes-and-the-pin-waits	PASS	exit 0; pref absent
+E04-apt-update-is-clean	PASS	exit 0
+E04b-sync-pins-once-apt-lists-it	PASS	exit 0; Pin: release o=Pakomichi,l=pakomichi-github-1429307950-attested Pin-Priority: 990 
+E05-apt-installs-the-current-release	PASS	installed 0.4.2
+E06-other-source-is-read	PASS	exit 0
+E07-the-pin-keeps-the-publisher	PASS	candidate 0.4.2; other 9.9.9 listed
+E08-apt-upgrade-keeps-the-publisher	PASS	installed 0.4.2
+E09-sync-takes-the-new-release	PASS	exit 0
+E10-apt-update-is-clean	PASS	exit 0
+E11-apt-upgrade-installs-the-new-release	PASS	installed 0.4.3
+E12-the-bytes-are-the-release-asset	PASS	index ec4a9aa5c0ea7ef80a34bc3df047e0d1791c3c66589b98932e2c146cd2444a1a; served ec4a9aa5c0ea7ef80a34bc3df047e0d1791c3c66589b98932e2c146cd2444a1a
+E13-installed-from-pakomichi-at-990	PASS	 100 http://127.0.0.1:879/pakomichi-github-1429307950-attested pakomichi-github-1429307950-attested/main amd64 Packages
+E14-the-higher-version-elsewhere-is-not-taken	PASS	installed 0.4.3; other 9.9.9
+E15-full-upgrade-keeps-the-publisher	PASS	
+E16-second-sync-changes-nothing	PASS	exit 0
+E17-status-names-the-other-source-and-version	PASS	 notice: pakomichi-r003-fixture 9.9.9 is offered by file:/srv/p3007a-other ./; the publisher stays until you switch it
+E18-status-shows-no-broken-promise	PASS	
+E19-foreign-apt-configuration-unchanged	PASS	14 files
+E20-no-enable-upgrade	PASS	APT::Get::EnableUpgrade=unset

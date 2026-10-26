@@ -123,6 +123,52 @@ struct OwnerWire {
     login: String,
 }
 
+/// Whether an account is a user or an organization; it selects
+/// `users/{login}/…` or `orgs/{login}/…`.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum AccountKind {
+    User,
+    Organization,
+}
+
+/// An account as `GET /user/{id}` returns it now. The login is current only
+/// for this response: it is an address resolved from the ID, never stored.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OwnerAccount {
+    pub id: OwnerId,
+    pub login: OwnerLogin,
+    pub kind: AccountKind,
+}
+
+#[derive(Deserialize)]
+struct AccountWire {
+    id: u64,
+    login: String,
+    #[serde(rename = "type")]
+    kind: String,
+}
+
+/// Parses `GET /user/{id}`. A type other than `User` or `Organization` (a
+/// bot, for example) cannot have owned a repository and is refused.
+pub fn parse_account(body: &[u8]) -> Result<OwnerAccount, WireError> {
+    let wire: AccountWire = decode(body)?;
+    let kind = match wire.kind.as_str() {
+        "User" => AccountKind::User,
+        "Organization" => AccountKind::Organization,
+        _ => {
+            return Err(WireError::Invalid {
+                field: "type",
+                problem: "neither a user nor an organization",
+            });
+        }
+    };
+    Ok(OwnerAccount {
+        id: OwnerId::new(wire.id).map_err(invalid("id"))?,
+        login: OwnerLogin::new(wire.login).map_err(invalid("login"))?,
+        kind,
+    })
+}
+
 /// Parses `GET /repos/{owner}/{repo}` or `GET /repositories/{id}`.
 pub fn parse_repository(body: &[u8]) -> Result<RepositoryIdentity, WireError> {
     let wire: RepositoryWire = decode(body)?;

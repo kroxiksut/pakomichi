@@ -67,5 +67,21 @@ artifacts still name it, keeps its row with this mark; its artifacts are held
 with `E_FAMILY_UNAPPROVED`. Only saving a confirmed family removes the mark.
 Rows written before the migration were all members.
 
+Migration 0006 adds `evidence_full_check` (ADR-037 point 1): when the evidence
+of a source was last checked in full with the forge. Between full checks a
+synchronization reuses the recorded evidence of the same bytes of the same
+asset; a full check runs when there is no row, when the row is 24 hours old or
+older, or in the future (a clock set back), and on `pchi sync --force`. One
+row per source, replaced by every full check.
+
+Migration 0007 adds `evidence_bundle` (ADR-034 point 1): the SHA-256 of each
+attestation bundle a `trust_evidence` row was verified from, at most 16 per
+row (ADR-030). The bundle bytes stay in the blob store as received, so the
+evidence can be verified again offline, and the blob store's collector keeps
+every bundle named here. A row references evidence of its own source, accepts
+only a lowercase hex digest, and is never changed or removed. Evidence
+recorded before the migration names no bundle, because its bytes were not
+kept.
+
 The prose in this file is covered by the documentation terms described in
 `LICENSING.md`; SQL and other code-like material use `MIT OR Apache-2.0`.

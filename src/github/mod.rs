@@ -58,7 +58,7 @@ pub use transport::{
     TransportError,
 };
 pub use wire::{
-    AnnotatedTag, MAX_ASSETS_PER_RELEASE, MAX_RELEASES_PER_PAGE, MAX_RESPONSE_BYTES, Release,
-    ReleaseAsset, TagObjectKind, TagRef, WireError, parse_release, parse_release_page,
-    parse_repository, parse_tag_object, parse_tag_ref,
+    AccountKind, AnnotatedTag, MAX_ASSETS_PER_RELEASE, MAX_RELEASES_PER_PAGE, MAX_RESPONSE_BYTES,
+    OwnerAccount, Release, ReleaseAsset, TagObjectKind, TagRef, WireError, parse_release,
+    parse_release_page, parse_repository, parse_tag_object, parse_tag_ref,
 };
